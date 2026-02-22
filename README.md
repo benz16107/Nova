@@ -1,6 +1,86 @@
-# Hotel Room Concierge
+# Hotel Room Concierge (Nova)
 
-A hotel room concierge system: **manager dashboard** for staff, **guest app** for in-room voice concierge (OpenAI Realtime API), and optional **NFC hardware** for room activation. Each guest gets isolated **persistent memory** via [Backboard](https://docs.backboard.io/). Requests and complaints are logged and shown on the dashboard.
+A hotel room concierge system: **manager dashboard** for staff, **guest app** for in-room voice concierge (OpenAI Realtime API), and optional **NFC hardware** for room activation. Each guest gets isolated **persistent memory** via [Backboard](https://docs.backboard.io/).
+
+---
+
+## How to run locally
+
+### Prerequisites
+
+- **Node.js** 18+
+- **OpenAI API key** – [platform.openai.com](https://platform.openai.com/) (required for voice concierge)
+- **Backboard API key** (optional, for memory) – [Backboard](https://app.backboard.io/)
+
+### Step 1: Backend
+
+```bash
+cd backend
+cp .env.example .env
+```
+
+Edit `backend/.env` and set at least:
+
+- `OPENAI_API_KEY` – required for the voice concierge  
+- Optionally: `BACKBOARD_API_KEY`, `BACKBOARD_ASSISTANT_ID`, `MANAGER_PASSWORD` (default: `hotel-staff`)
+
+Then:
+
+```bash
+npm install
+npx prisma db push
+npm run dev
+```
+
+- Backend runs at **http://localhost:3000** (or 3001–3004 if 3000 is in use).
+
+### Step 2: Manager dashboard
+
+In a new terminal:
+
+```bash
+cd apps/dashboard
+npm install
+npm run dev
+```
+
+- Open **http://localhost:5174**
+- Log in with any email; password = `MANAGER_PASSWORD` from `backend/.env` (default `hotel-staff`)
+
+### Step 3: Guest app
+
+In another terminal:
+
+```bash
+cd apps/guest-app
+npm install
+npm run dev
+```
+
+- Open **http://localhost:5175**
+- **Activate** with room number + guest first and last name (create and check in the guest in the dashboard first)
+
+### Summary
+
+| Service        | URL                  |
+|----------------|----------------------|
+| Backend API    | http://localhost:3000 |
+| Manager dashboard | http://localhost:5174 |
+| Guest app      | http://localhost:5175 |
+
+Run **backend** first, then **dashboard** and **guest-app** in any order.
+
+---
+
+## Repo layout
+
+| Path | Description |
+|------|-------------|
+| `backend/` | Node.js (TypeScript), Express, Prisma (SQLite). REST API + WebSocket Realtime proxy, Backboard client. |
+| `apps/dashboard/` | Manager SPA (React, Vite). Guests & rooms, requests & complaints. |
+| `apps/guest-app/` | Guest PWA (React, Vite). Activate (room + name), Concierge voice screen. |
+| `hardware/esp32-room-reader/` | ESP32 + RC522 NFC; POST to `/api/nfc/read` on card read. |
+| `docs/` | [Environment variables](docs/env.md), [API reference](docs/api.md). |
 
 ## Features
 
@@ -10,66 +90,6 @@ A hotel room concierge system: **manager dashboard** for staff, **guest app** fo
 - **Per-guest memory** – Backboard stores memories per guest (per stay). One Backboard thread per guest.
 - **Archived guests** – Check-out auto-archives; manual **Archive** also available. Archived list shows reason (Checked out / Manual archive) and time.
 - **Optional** – ESP32 + NFC reader for key-card activation (`hardware/esp32-room-reader`).
-
-## Repo layout
-
-| Path | Description |
-|------|-------------|
-| `backend/` | Node.js (TypeScript), Express, Prisma (SQLite). REST API + WebSocket Realtime proxy, Backboard client. |
-| `apps/dashboard/` | Manager SPA (React, Vite). Guests & rooms, requests & complaints. |
-| `apps/guest-app/` | Guest PWA (React, Vite). Activate (room + first and last name), Concierge voice screen. |
-| `hardware/esp32-room-reader/` | ESP32 + RC522 NFC; POST to `/api/nfc/read` on card read. |
-| `docs/` | [Environment variables](docs/env.md), [API reference](docs/api.md). |
-
-## Prerequisites
-
-- **Node.js** 18+
-- **OpenAI API key** (required for voice concierge) – [platform.openai.com](https://platform.openai.com/)
-- **Backboard API key** (optional, for memory) – [Backboard](https://app.backboard.io/)
-
-## Run locally
-
-### 1. Backend
-
-```bash
-cd backend
-cp .env.example .env
-# Edit .env: set OPENAI_API_KEY (required). Optionally BACKBOARD_API_KEY.
-npm install
-npx prisma db push
-npm run dev
-```
-
-- Server: **http://localhost:3000**
-- If port 3000 is in use, the server tries 3001–3004.
-
-### 2. Manager dashboard
-
-```bash
-cd apps/dashboard
-npm install
-npm run dev
-```
-
-- Open **http://localhost:5174**
-- Login: any email, password = value of `MANAGER_PASSWORD` in `backend/.env` (default `hotel-staff`)
-- Proxy: `/api` → backend (localhost:3000)
-
-### 3. Guest app
-
-```bash
-cd apps/guest-app
-npm install
-npm run dev
-```
-
-- Open **http://localhost:5175**
-- Proxy: `/api` and WebSocket → backend
-- **Activate** with room number and guest first and last name (create the guest in the dashboard first, then check them in)
-
-### 4. Hardware (optional)
-
-In `hardware/esp32-room-reader`: set WiFi and `SERVER_URL` (backend URL), then build/upload with PlatformIO.
 
 ## Configuration
 
