@@ -37,6 +37,39 @@ requestsRouter.patch("/:id/close", async (req, res) => {
   }
 });
 
+// PATCH /api/requests/:id/reopen — mark request as open again
+requestsRouter.patch("/:id/reopen", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const request = await prisma.request.update({
+      where: { id },
+      data: { status: "open", closedAt: null },
+    });
+    res.json(request);
+  } catch (e) {
+    if (e && typeof e === "object" && "code" in e && e.code === "P2025") return res.status(404).json({ error: "Request not found" });
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// POST /api/requests/:id/reply — manager sends a reply; Nova will deliver it when the guest opens Nova next
+requestsRouter.post("/:id/reply", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const body = (req.body as { message?: string }) || {};
+    const message = typeof body.message === "string" ? body.message.trim() : "";
+    if (!message) return res.status(400).json({ error: "message required" });
+    const request = await prisma.request.update({
+      where: { id },
+      data: { managerReply: message, managerRepliedAt: new Date(), managerReplyShownAt: null },
+    });
+    res.json(request);
+  } catch (e) {
+    if (e && typeof e === "object" && "code" in e && e.code === "P2025") return res.status(404).json({ error: "Request not found" });
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 // Complaints list (mount at /api/complaints)
 export const complaintsRouter = Router();
 complaintsRouter.get("/", async (_req, res) => {

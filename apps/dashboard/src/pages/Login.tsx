@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth";
 
 export default function Login() {
-  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const { login } = useAuth();
@@ -12,7 +11,7 @@ export default function Login() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    const ok = await login(email, password);
+    const ok = await login(password);
     if (ok) navigate("/guests", { replace: true });
     else setError("Invalid credentials");
   }
@@ -22,14 +21,6 @@ export default function Login() {
       <h1 style={{ marginTop: 0 }}>Hotel Concierge</h1>
       <p style={{ color: "#666", marginBottom: 24 }}>Manager dashboard</p>
       <form onSubmit={handleSubmit}>
-        <label style={{ display: "block", marginBottom: 8 }}>Email</label>
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-          style={{ width: "100%", padding: 8, marginBottom: 16 }}
-        />
         <label style={{ display: "block", marginBottom: 8 }}>Password</label>
         <input
           type="password"

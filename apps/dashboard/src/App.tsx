@@ -5,6 +5,7 @@ import Login from "./pages/Login";
 import Layout from "./pages/Layout";
 import Guests from "./pages/Guests";
 import Activity from "./pages/Activity";
+import Feedback from "./pages/Feedback";
 import Settings from "./pages/Settings";
 
 function App() {
@@ -19,6 +20,7 @@ function App() {
         <Route index element={<Guests />} />
         <Route path="guests" element={<Guests />} />
         <Route path="activity" element={<Activity />} />
+        <Route path="feedback" element={<Feedback />} />
         <Route path="settings" element={<Settings />} />
         <Route path="requests" element={<Navigate to="/activity" replace />} />
         <Route path="memory" element={<Navigate to="/activity" replace />} />

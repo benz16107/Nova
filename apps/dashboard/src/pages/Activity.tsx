@@ -9,6 +9,8 @@ type RequestRow = {
   createdAt: string;
   closedAt?: string | null;
   guest?: { firstName: string; lastName: string };
+  managerReply?: string | null;
+  managerRepliedAt?: string | null;
 };
 
 type RoomRow = {
@@ -46,7 +48,10 @@ export default function Activity() {
   const [rooms, setRooms] = useState<RoomRow[]>([]);
   const [activityLogVisible, setActivityLogVisible] = useState(false);
   const [activityLogExpanded, setActivityLogExpanded] = useState(false);
-
+  const [replyModalRequest, setReplyModalRequest] = useState<RequestRow | null>(null);
+  const [replyMessage, setReplyMessage] = useState("");
+  const [replySending, setReplySending] = useState(false);
+  const [replyError, setReplyError] = useState<string | null>(null);
   const loadRequests = useCallback(async (params?: { type?: string; roomId?: string }) => {
     try {
       const type = params?.type;
@@ -176,9 +181,10 @@ export default function Activity() {
   const checkedInRooms = rooms.filter(
     (room) => room.guests && room.guests.some((g) => g.checkedIn && !g.checkedOut)
   );
+  const checkedInRoomIds = new Set(checkedInRooms.map((room) => room.roomId));
   const openCountByRoom: Record<string, number> = {};
   for (const r of requests) {
-    if (r.status !== "closed" && r.type !== "complaint") openCountByRoom[r.roomId] = (openCountByRoom[r.roomId] ?? 0) + 1;
+    if (r.status !== "closed") openCountByRoom[r.roomId] = (openCountByRoom[r.roomId] ?? 0) + 1;
   }
 
   const roomIdsFromRequests = [...new Set(requests.map((r) => r.roomId))];
@@ -198,56 +204,124 @@ export default function Activity() {
     return isToday ? d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : d.toLocaleDateString([], { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" });
   }
 
+  function openReplyModal(r: RequestRow) {
+    setReplyModalRequest(r);
+    setReplyMessage(r.managerReply ?? "");
+    setReplyError(null);
+  }
+
+  async function submitReply(e?: React.FormEvent) {
+    e?.preventDefault();
+    if (!replyModalRequest || !replyMessage.trim() || replySending) return;
+    setReplySending(true);
+    setReplyError(null);
+    try {
+      const res = await fetch(`/api/requests/${replyModalRequest.id}/reply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: replyMessage.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setReplyModalRequest(null);
+        setReplyMessage("");
+        loadAll(true);
+      } else {
+        setReplyError(typeof data?.error === "string" ? data.error : "Failed to send reply");
+      }
+    } catch {
+      setReplyError("Network error");
+    } finally {
+      setReplySending(false);
+    }
+  }
+
   function renderRequestRow(r: RequestRow) {
     const guestName = r.guest ? `${r.guest.firstName} ${r.guest.lastName}` : "—";
     const isComplaint = r.type === "complaint";
     const isOpen = r.status !== "closed";
+    const hasReply = Boolean(r.managerReply?.trim());
     return (
       <tr key={r.id}>
         <td className="cell-room">Room {r.roomId}</td>
         <td>
           <span className={isComplaint ? "badge badge-complaint" : "badge badge-request"}>{r.type}</span>
-          {isOpen ? <span className="badge badge-muted" style={{ marginLeft: "0.35rem" }}>Open</span> : <span className="text-muted" style={{ marginLeft: "0.35rem", fontSize: "0.8125rem" }}>Closed</span>}
         </td>
         <td className="cell-muted">{guestName}</td>
         <td className="cell-muted">{formatShortDate(r.createdAt)}</td>
         <td className="cell-desc" title={r.description}><span>{r.description}</span></td>
-        <td style={{ width: "1%", whiteSpace: "nowrap" }}>
-          {isOpen && (
+        <td style={{ verticalAlign: "middle" }}>
+          <div className="activity-row-actions">
             <button
               type="button"
-              className="btn btn-sm btn-primary"
-              onClick={async () => {
-                try {
-                  await fetch(`/api/requests/${r.id}/close`, { method: "PATCH" });
-                  loadAll(true);
-                } catch {
-                  // ignore
-                }
-              }}
+              className={`btn btn-sm ${hasReply ? "btn-ghost" : "btn-reply-pending"}`}
+              onClick={() => openReplyModal(r)}
+              title={hasReply ? "View or edit reply" : "Reply to guest via Nova"}
             >
-              Close
+              {hasReply ? "Replied" : "Reply"}
             </button>
-          )}
+            {isOpen && (
+              <button
+                type="button"
+                className="btn btn-sm btn-primary"
+                onClick={async () => {
+                  try {
+                    await fetch(`/api/requests/${r.id}/close`, { method: "PATCH" });
+                    loadAll(true);
+                  } catch {
+                    // ignore
+                  }
+                }}
+              >
+                Close
+              </button>
+            )}
+          </div>
         </td>
       </tr>
     );
   }
 
-  function renderActivityLogRow(r: RequestRow) {
+  async function reopenRequest(id: string) {
+    try {
+      await fetch(`/api/requests/${id}/reopen`, { method: "PATCH" });
+      loadAll(true);
+    } catch {
+      // ignore
+    }
+  }
+
+  function renderActivityLogRow(r: RequestRow, options?: { showReopen?: boolean }) {
     const guestName = r.guest ? `${r.guest.firstName} ${r.guest.lastName}` : "—";
     const isComplaint = r.type === "complaint";
-    const isOpen = r.status !== "closed";
+    const isClosed = r.status === "closed";
+    const hasReply = Boolean(r.managerReply?.trim());
     return (
       <tr key={r.id}>
         <td className="cell-room">Room {r.roomId}</td>
         <td>
           <span className={isComplaint ? "badge badge-complaint" : "badge badge-request"}>{r.type}</span>
-          {isOpen ? <span className="badge badge-muted" style={{ marginLeft: "0.35rem" }}>Open</span> : <span className="text-muted" style={{ marginLeft: "0.35rem", fontSize: "0.8125rem" }}>Closed</span>}
         </td>
         <td className="cell-muted">{guestName}</td>
         <td className="cell-muted">{formatShortDate(r.createdAt)}</td>
         <td className="cell-desc" title={r.description}><span>{r.description}</span></td>
+        <td style={{ verticalAlign: "middle" }}>
+          <div className="activity-row-actions">
+            <button
+              type="button"
+              className={`btn btn-sm ${hasReply ? "btn-ghost" : "btn-reply-pending"}`}
+              onClick={() => openReplyModal(r)}
+              title={hasReply ? "View or edit reply" : "Reply to guest via Nova"}
+            >
+              {hasReply ? "Replied" : "Reply"}
+            </button>
+            {options?.showReopen && isClosed && (
+              <button type="button" className="btn btn-sm" onClick={() => reopenRequest(r.id)}>
+                Re-open
+              </button>
+            )}
+          </div>
+        </td>
       </tr>
     );
   }
@@ -258,6 +332,37 @@ export default function Activity() {
         <h1 className="mt-0">Activity</h1>
         <p className="text-muted">Requests and complaints by room.</p>
       </div>
+
+      {replyModalRequest && (
+        <div className="modal-overlay" onClick={() => !replySending && (setReplyModalRequest(null), setReplyError(null))}>
+          <div className="modal" style={{ minWidth: 400 }} onClick={(e) => e.stopPropagation()}>
+            <h2 className="modal-title">Reply to guest via Nova</h2>
+            <p className="text-muted mb-2" style={{ fontSize: "0.9rem" }}>
+              Room {replyModalRequest.roomId} · {replyModalRequest.guest ? `${replyModalRequest.guest.firstName} ${replyModalRequest.guest.lastName}` : "—"} · {replyModalRequest.type}
+            </p>
+            <p className="text-muted mb-2" style={{ fontSize: "0.85rem" }}>
+              Your message will be delivered the next time the guest opens Nova.
+            </p>
+            <form onSubmit={submitReply}>
+              <textarea
+                value={replyMessage}
+                onChange={(e) => setReplyMessage(e.target.value)}
+                placeholder="e.g. We've sent extra towels to your room."
+                rows={3}
+                className="input"
+                style={{ width: "100%", resize: "vertical", marginBottom: "0.5rem" }}
+              />
+              {replyError && <p className="text-error mb-2" style={{ fontSize: "0.875rem", marginTop: 0 }}>{replyError}</p>}
+              <div className="flex gap-2">
+                <button type="submit" className="btn btn-primary" disabled={!replyMessage.trim() || replySending}>
+                  {replySending ? "Sending…" : "Send reply"}
+                </button>
+                <button type="button" className="btn btn-ghost" onClick={() => { setReplyModalRequest(null); setReplyError(null); }} disabled={replySending}>Cancel</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {aiConfigured === true && (
         <div className="activity-ai-card">
@@ -309,7 +414,7 @@ export default function Activity() {
       )}
 
       <section className="mb-3">
-        <h2 className="section-title">Reserved rooms</h2>
+        <h2 className="section-title">Checked in rooms</h2>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))", gap: "0.75rem" }}>
           {checkedInRooms.length === 0 ? (
             <div className="activity-empty" style={{ padding: "1.25rem" }}>No rooms checked in.</div>
@@ -328,7 +433,7 @@ export default function Activity() {
                     className={`room-pill ${hasOpen ? "has-open" : ""}`}
                     style={isSelected ? { borderColor: "var(--accent)", background: "var(--accent-soft)" } : undefined}
                   >
-                    <div className="room-num">Room {room.roomId}</div>
+                    <div className="room-num">{room.roomId}</div>
                     {hasOpen && <div className="room-open">{openCount} open request{openCount !== 1 ? "s" : ""}</div>}
                   </button>
                 );
@@ -380,7 +485,7 @@ export default function Activity() {
       ) : (() => {
         const list = hasSearch ? searchReqs : reqsFiltered;
         const openList = list.filter((r) => r.status !== "closed");
-        const closedList = list.filter((r) => r.status === "closed");
+        const closedList = list.filter((r) => r.status === "closed" && checkedInRoomIds.has(r.roomId));
         const title = hasSearch ? `Search results${searchTotal > 0 ? ` (${list.length})` : ""}` : "Requests & complaints";
         if (openList.length === 0) {
           return (
@@ -395,11 +500,11 @@ export default function Activity() {
                     <table className="activity-table">
                       <thead>
                         <tr>
-                          <th>Room</th><th>Type</th><th>Guest</th><th>Time</th><th>Description</th>
+                          <th>Room</th><th>Type</th><th>Guest</th><th>Time</th><th>Description</th><th style={{ width: "1%" }} />
                         </tr>
                       </thead>
                       <tbody>
-                        {[...closedList].sort((a, b) => new Date((b.closedAt || b.createdAt) as string).getTime() - new Date((a.closedAt || a.createdAt) as string).getTime()).map((r) => renderActivityLogRow(r))}
+                        {[...closedList].sort((a, b) => new Date((b.closedAt || b.createdAt) as string).getTime() - new Date((a.closedAt || a.createdAt) as string).getTime()).map((r) => renderActivityLogRow(r, { showReopen: true }))}
                       </tbody>
                     </table>
                   </div>
@@ -432,11 +537,11 @@ export default function Activity() {
                   <table className="activity-table">
                     <thead>
                       <tr>
-                        <th>Room</th><th>Type</th><th>Guest</th><th>Time</th><th>Description</th>
+                        <th>Room</th><th>Type</th><th>Guest</th><th>Time</th><th>Description</th><th style={{ width: "1%" }} />
                       </tr>
                     </thead>
                     <tbody>
-                      {[...closedList].sort((a, b) => new Date((b.closedAt || b.createdAt) as string).getTime() - new Date((a.closedAt || a.createdAt) as string).getTime()).map((r) => renderActivityLogRow(r))}
+                      {[...closedList].sort((a, b) => new Date((b.closedAt || b.createdAt) as string).getTime() - new Date((a.closedAt || a.createdAt) as string).getTime()).map((r) => renderActivityLogRow(r, { showReopen: true }))}
                     </tbody>
                   </table>
                 </div>
@@ -482,7 +587,7 @@ export default function Activity() {
                         <table className="activity-table">
                           <thead>
                             <tr>
-                              <th>Room</th><th>Type</th><th>Guest</th><th>Time</th><th>Description</th>
+                              <th>Room</th><th>Type</th><th>Guest</th><th>Time</th><th>Description</th><th style={{ width: "1%" }} />
                             </tr>
                           </thead>
                           <tbody>

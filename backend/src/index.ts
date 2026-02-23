@@ -30,6 +30,7 @@ import { authRouter } from "./routes/auth.js";
 import { memoriesRouter } from "./routes/memories.js";
 import { aiRouter } from "./routes/ai.js";
 import { settingsRouter } from "./routes/settings.js";
+import { feedbackRouter } from "./routes/feedback.js";
 import { attachRealtimeWebSocket } from "./realtime/proxy.js";
 import { checkBackboardConnection } from "./backboard.js";
 import { BACKBOARD_MEMORY_ENABLED } from "../../nova-config.js";
@@ -70,6 +71,7 @@ app.use("/api/complaints", complaintsRouter);
 app.use("/api/memories", memoriesRouter);
 app.use("/api/ai", aiRouter);
 app.use("/api/settings", settingsRouter);
+app.use("/api/feedback", feedbackRouter);
 
 // Ensure API always returns JSON on errors (e.g. unhandled rejections in async routes)
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

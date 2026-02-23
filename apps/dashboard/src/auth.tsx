@@ -4,7 +4,7 @@ const AUTH_KEY = "hotel_dashboard_token";
 
 type AuthContextType = {
   token: string | null;
-  login: (email: string, password: string) => Promise<boolean>;
+  login: (password: string) => Promise<boolean>;
   logout: () => void;
 };
 
@@ -14,11 +14,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(() =>
     localStorage.getItem(AUTH_KEY)
   );
-  const login = useCallback(async (email: string, password: string) => {
+  const login = useCallback(async (password: string) => {
     const res = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ password }),
     });
     if (!res.ok) return false;
     const data = (await res.json()) as { token?: string };

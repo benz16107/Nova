@@ -43,6 +43,19 @@ const TOOLS = [
       required: ["item"],
     },
   },
+  {
+    type: "function" as const,
+    name: "submit_feedback",
+    description: "Record checkout feedback from the guest (e.g. how was their stay, any last comments). Use when the guest wants to leave feedback, especially at checkout. After calling, thank them and confirm it was recorded.",
+    parameters: {
+      type: "object",
+      properties: {
+        content: { type: "string", description: "The guest's feedback text" },
+        source: { type: "string", enum: ["text", "voice"], description: "How the guest gave the feedback" },
+      },
+      required: ["content"],
+    },
+  },
 ];
 
 export function attachRealtimeWebSocket(server: import("http").Server): void {
@@ -88,8 +101,26 @@ export function attachRealtimeWebSocket(server: import("http").Server): void {
     await ensureThreadForGuest(guest.id);
     const memories = await getMemoriesForGuest(guest.id);
     const memoryText = memorySummary(memories);
-    const contextLine = `Current guest: ${guest.firstName}, Room ${guest.room.roomId}. ${memoryText}`;
-    const instructionsWithWelcome =
+    const contextLine = `Current guest (the person you are speaking with): ${guest.firstName}, Room ${guest.room.roomId}. Only use memories and preferences for this guest—do not attribute requests or preferences from other people in the room to ${guest.firstName}. ${memoryText}`;
+
+    // Pending manager replies: deliver first thing when guest opens Nova, then mark as shown
+    const pendingReplies = await prisma.request.findMany({
+      where: { guestId: guest.id, managerReply: { not: null }, managerReplyShownAt: null },
+      select: { id: true, managerReply: true, type: true },
+    });
+    const requestIdsToMarkShown: string[] = pendingReplies.map((r) => r.id);
+    // Build phrase per reply: "The managers have left a message for your last request: \"...\"" or "...complaint: \"...\""
+    const managerPhrases =
+      pendingReplies
+        .filter((r) => r.managerReply != null && String(r.managerReply).trim() !== "")
+        .map((r) => {
+          const label = r.type === "complaint" ? "complaint" : "request";
+          const msg = String(r.managerReply).trim();
+          return `The managers have left a message for your last ${label}: "${msg}"`;
+        });
+    const managerMessageText = managerPhrases.join(" ");
+
+    const instructionsWithWelcome: string =
       WELCOME_MESSAGE.trim() === ""
         ? INSTRUCTIONS + "\n\n" + contextLine
         : INSTRUCTIONS + "\n\nWhen the conversation starts, say this welcome out loud first, then wait for the guest: \"" + WELCOME_MESSAGE.trim() + "\"\n\n" + contextLine;
@@ -148,9 +179,32 @@ export function attachRealtimeWebSocket(server: import("http").Server): void {
         return;
       }
       const ev = parsed as { type: string; call_id?: string; name?: string; arguments?: string };
-      if (ev.type === "session.updated" && WELCOME_MESSAGE.trim() !== "" && !welcomeSent) {
+      const shouldTriggerFirstResponse = WELCOME_MESSAGE.trim() !== "" || managerMessageText.length > 0;
+      if (ev.type === "session.updated" && shouldTriggerFirstResponse && !welcomeSent) {
         welcomeSent = true;
+        // If there's a manager message, inject it as a user turn so the model is explicitly asked to deliver it
+        if (managerMessageText.length > 0) {
+          const deliverInstruction =
+            "Say the following to the guest exactly as written (it tells them the managers replied to their request or complaint), then give your usual welcome: " +
+            JSON.stringify(managerPhrases.join(" "));
+          openaiWs.send(
+            JSON.stringify({
+              type: "conversation.item.create",
+              item: {
+                type: "message",
+                role: "user",
+                content: [{ type: "input_text", text: deliverInstruction }],
+              },
+            })
+          );
+        }
         openaiWs.send(JSON.stringify({ type: "response.create" }));
+      }
+      if (ev.type === "response.done" && requestIdsToMarkShown.length > 0) {
+        const ids = [...requestIdsToMarkShown];
+        requestIdsToMarkShown.length = 0;
+        const now = new Date();
+        prisma.request.updateMany({ where: { id: { in: ids } }, data: { managerReplyShownAt: now } }).catch(() => {});
       }
       if (ev.type === "response.function_call_arguments.done") {
         const args = (ev as { arguments?: string }).arguments;

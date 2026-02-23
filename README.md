@@ -70,6 +70,40 @@ npm run dev
 
 Run **backend** first, then **dashboard** and **guest-app** in any order.
 
+### Demo / example data
+
+To load an example hotel with **floors, rooms, and sample guests** (reserved, checked-in, and archived) plus **requests** and **feedback** so you can try every feature without manual data entry, run these commands **from the `backend/` directory** (Prisma and the seed script live there):
+
+```bash
+cd backend
+npx prisma db push    # if you haven't already
+npm run db:seed       # or: npx prisma db seed
+```
+
+If you run `prisma` or `npm run db:seed` from the repo root you’ll get “schema not found” or “package.json not found”; always `cd backend` first.
+
+This seeds:
+
+- **Hotel layout:** 3 floors with 6, 6, and 4 rooms (101–106, 201–206, 301–304).
+- **Rooms:** All 16 rooms created.
+- **Guests:** Mix of **reserved** (301, 302), **checked-in** (101–104, some with 2 guests), and **archived** (201–204).
+- **Requests:** Open and closed requests/complaints for Activity and AI digest.
+- **Feedback:** A few entries for archived guests (Feedback tab).
+
+**Guest app — try Nova:** Activate with **Room 101**, First **Jane**, Last **Smith** (or Room 102 / John Doe, Room 103 / Emma Wilson, Room 104 / James Brown or Lisa Brown). Then open Nova and use voice or text. To see the **checked-out + feedback** flow, check out that guest from the dashboard, then reopen the guest app.
+
+**Dashboard:** Use the Guests & Rooms tab to check in/out, run checkout summary (e.g. Room 104 has 2 guests and requests), archive, restore, and delete. Use Activity for requests and AI digest; Feedback tab for collected feedback.
+
+**Exiting the demo / resetting data:** To clear all data (including demo seed) and start with an empty database, from the `backend/` directory remove the SQLite file and re-push the schema:
+
+```bash
+cd backend
+rm -f prisma/dev.sqlite
+npx prisma db push
+```
+
+(If your `DATABASE_URL` in `.env` points to a different path, delete that file instead.) The dashboard and guest app will then show no rooms or guests until you add them again.
+
 ---
 
 ## Repo layout

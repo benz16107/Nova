@@ -7,6 +7,9 @@ export default function Home() {
   const { setGuestToken } = useGuestAuth();
   const [conciergeAllowed, setConciergeAllowed] = useState<boolean | null>(null);
   const [guestName, setGuestName] = useState<string | null>(null);
+  const [feedbackText, setFeedbackText] = useState("");
+  const [feedbackSending, setFeedbackSending] = useState(false);
+  const [feedbackSent, setFeedbackSent] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -19,51 +22,83 @@ export default function Home() {
       .catch(() => setConciergeAllowed(false));
   }, [token]);
 
+  async function submitFeedback(e: React.FormEvent) {
+    e.preventDefault();
+    const content = feedbackText.trim();
+    if (!content || !token || feedbackSending) return;
+    setFeedbackSending(true);
+    setFeedbackSent(false);
+    try {
+      const r = await fetch(`/api/feedback?guest_token=${encodeURIComponent(token)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content, source: "text" }),
+      });
+      if (r.ok) {
+        setFeedbackText("");
+        setFeedbackSent(true);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setFeedbackSending(false);
+    }
+  }
+
   if (conciergeAllowed === false) {
     return (
-      <div style={{ padding: 24, maxWidth: 400, margin: "0 auto", textAlign: "center" }}>
-        <h1 style={{ marginTop: 0 }}>Stay ended</h1>
-        <p style={{ color: "#666", marginBottom: 24 }}>You have checked out. Nova is no longer available.</p>
-        <button
-          type="button"
-          onClick={() => setGuestToken(null)}
-          style={{ padding: "12px 24px", fontSize: 16, background: "#333", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer" }}
-        >
-          Log out
-        </button>
+      <div className="g-screen g-screen-centered">
+        <div className="g-max-w-wide">
+          <h1 className="g-page-title g-mb-1">You have checked out</h1>
+          <p className="g-subtitle g-mb-3">Thank you for staying with us. We hope you had a great stay.</p>
+          {!feedbackSent ? (
+            <div className="g-card g-mb-3" style={{ padding: 24, textAlign: "left" }}>
+              <label className="g-mb-1" style={{ display: "block", fontSize: "0.9375rem", fontWeight: 600 }}>Leave feedback (optional)</label>
+              <p className="g-subtitle g-mb-2" style={{ fontSize: "0.875rem" }}>Share any feedback about your stay.</p>
+              <form onSubmit={submitFeedback}>
+                <textarea
+                  className="g-textarea g-mb-2"
+                  value={feedbackText}
+                  onChange={(e) => setFeedbackText(e.target.value)}
+                  placeholder="e.g. The shower was great, would love late checkout next time…"
+                  rows={3}
+                />
+                <button
+                  type="submit"
+                  className="g-btn g-btn-primary"
+                  disabled={!feedbackText.trim() || feedbackSending}
+                >
+                  {feedbackSending ? "Sending…" : "Submit feedback"}
+                </button>
+              </form>
+            </div>
+          ) : (
+            <div className="g-card g-mb-3" style={{ padding: 24 }}>
+              <p className="g-success-msg" style={{ margin: 0 }}>Thank you, your feedback has been recorded.</p>
+            </div>
+          )}
+          <button type="button" className="g-btn g-btn-secondary" onClick={() => setGuestToken(null)}>
+            Log out
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: 24, minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+    <div className="g-screen g-screen-centered">
       <button
         type="button"
+        className="g-btn g-btn-ghost"
+        style={{ position: "absolute", top: 16, right: 16 }}
         onClick={() => setGuestToken(null)}
-        style={{
-          position: "absolute",
-          top: 16,
-          right: 16,
-          padding: "8px 16px",
-          fontSize: 14,
-          background: "transparent",
-          color: "#888",
-          border: "1px solid #ccc",
-          borderRadius: 8,
-          cursor: "pointer",
-        }}
       >
         Log out
       </button>
-      <h1 style={{ marginTop: 0 }}>Your room</h1>
-      {guestName ? (
-        <p style={{ color: "#333", marginTop: 4, marginBottom: 8, fontSize: 18 }}>Welcome, {guestName}</p>
-      ) : null}
-      <p style={{ color: "#888", marginBottom: 32 }}>Ready to talk to Nova?</p>
-      <Link
-        to="/concierge"
-        style={{ padding: "16px 32px", fontSize: 18, background: "#3b82f6", color: "#fff", textDecoration: "none", borderRadius: 12 }}
-      >
+      <h1 className="g-page-title g-mb-1">Your room</h1>
+      {guestName && <p className="g-subtitle g-mb-2" style={{ color: "var(--g-text)", fontSize: "1.125rem" }}>Welcome, {guestName}</p>}
+      <p className="g-subtitle g-mb-3">Talk to Nova for help with anything you need.</p>
+      <Link to="/concierge" className="g-btn g-btn-primary" style={{ textDecoration: "none" }}>
         Open Nova
       </Link>
     </div>

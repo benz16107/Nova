@@ -88,24 +88,7 @@ aiRouter.get("/digest", async (req, res) => {
       orderBy: { createdAt: "desc" },
       include: { guest: { include: { room: true } } },
     });
-    const open = requests.filter((r) => r.status !== "closed");
-    const byRoom: Record<string, { requests: number; complaints: number }> = {};
-    for (const r of requests) {
-      const roomId = r.roomId ?? "—";
-      if (!byRoom[roomId]) byRoom[roomId] = { requests: 0, complaints: 0 };
-      if (r.type === "complaint") byRoom[roomId].complaints += 1;
-      else byRoom[roomId].requests += 1;
-    }
-
-    const lines: string[] = [
-      period === "today" ? "Today's activity" : "Last 7 days",
-      `${requests.length} total (${open.length} open).`,
-      "",
-      ...Object.entries(byRoom)
-        .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
-        .map(([room, counts]) => `Room ${room}: ${counts.requests} request(s), ${counts.complaints} complaint(s).`),
-    ];
-    let summary = lines.join("\n");
+    let summary = "";
 
     if (openai && requests.length > 0) {
       try {
@@ -133,10 +116,16 @@ aiRouter.get("/digest", async (req, res) => {
           max_tokens: 200,
         });
         const narrative = completion.choices[0]?.message?.content?.trim();
-        if (narrative) summary = narrative + "\n\n" + summary;
+        if (narrative) summary = narrative;
       } catch (e) {
         console.error("[AI digest]", e);
       }
+    }
+
+    if (!summary && requests.length > 0) {
+      summary = "No AI summary available for this period.";
+    } else if (!summary) {
+      summary = "No activity in this period.";
     }
 
     res.json({ summary, count: requests.length, period });
@@ -146,59 +135,91 @@ aiRouter.get("/digest", async (req, res) => {
   }
 });
 
-/** POST /api/ai/summarize-guest — guest stay summary; uses OpenAI when configured */
+/** POST /api/ai/summarize-guest — guest or room stay summary. Body: guestId (single) or guestIds (array for all guests in room). */
 aiRouter.post("/summarize-guest", async (req, res) => {
   try {
-    const { guestId } = (req.body as { guestId?: string }) || {};
-    if (!guestId) return res.status(400).json({ error: "guestId required" });
+    const body = (req.body as { guestId?: string; guestIds?: string[] }) || {};
+    const guestIds = Array.isArray(body.guestIds) && body.guestIds.length > 0
+      ? body.guestIds
+      : typeof body.guestId === "string" && body.guestId
+        ? [body.guestId]
+        : null;
+    if (!guestIds || guestIds.length === 0) return res.status(400).json({ error: "guestId or guestIds required" });
 
-    const guest = await prisma.guest.findUnique({
-      where: { id: guestId },
+    const guests = await prisma.guest.findMany({
+      where: { id: { in: guestIds } },
       include: { room: true },
+      orderBy: { createdAt: "asc" },
     });
-    if (!guest) return res.status(404).json({ error: "Guest not found" });
+    if (guests.length === 0) return res.status(404).json({ error: "Guest(s) not found" });
 
-    let memories: string[] = [];
-    try {
-      const { getMemoriesForGuest } = await import("../backboard.js");
-      memories = await getMemoriesForGuest(guest.id);
-    } catch {
-      // Backboard not configured or failed
+    const backboard = await import("../backboard.js").catch(() => null);
+    const roomId = guests[0]?.room?.roomId ?? "—";
+    const guestLines: string[] = [];
+    let allMemories: string[] = [];
+    let allRequests: { type: string; description: string; status: string }[] = [];
+    let allFeedback: string[] = [];
+
+    const now = new Date();
+    for (const guest of guests) {
+      let memories: string[] = [];
+      if (backboard) {
+        try {
+          memories = await backboard.getMemoriesForGuest(guest.id);
+        } catch {
+          // ignore
+        }
+      }
+      const requests = await prisma.request.findMany({
+        where: { guestId: guest.id },
+        orderBy: { createdAt: "desc" },
+      });
+      const feedbackList = await prisma.feedback.findMany({
+        where: { guestId: guest.id },
+        orderBy: { createdAt: "desc" },
+      });
+      guestLines.push(`Guest: ${guest.firstName} ${guest.lastName}`);
+      const checkedInAt = guest.checkedInAt ? new Date(guest.checkedInAt) : null;
+      const endAt = guest.checkedOutAt ? new Date(guest.checkedOutAt) : now;
+      if (checkedInAt) {
+        const stayMs = endAt.getTime() - checkedInAt.getTime();
+        const stayDays = Math.floor(stayMs / (24 * 60 * 60 * 1000));
+        const stayHours = Math.floor((stayMs % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+        const stayStr = stayDays > 0 ? `${stayDays} day(s) ${stayHours} hour(s)` : `${stayHours} hour(s)`;
+        guestLines.push(`Checked in: ${checkedInAt.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}. Length of stay: ${stayStr}.`);
+      }
+      if (memories.length > 0) guestLines.push("Stay notes: " + memories.slice(0, 8).join("; "));
+      requests.forEach((r) => {
+        allRequests.push({ type: r.type, description: r.description, status: r.status ?? "open" });
+        guestLines.push(`- [${r.type}] ${r.description} (${r.status === "closed" ? "fulfilled" : "open"})`);
+      });
+      feedbackList.forEach((f) => {
+        allFeedback.push(f.content);
+        guestLines.push(`Feedback: ${f.content}`);
+      });
+      allMemories = allMemories.concat(memories);
     }
-
-    const requests = await prisma.request.findMany({
-      where: { guestId: guest.id },
-      orderBy: { createdAt: "desc" },
-    });
 
     const tags: string[] = [];
     let summary = "";
+    const hasData = allMemories.length > 0 || allRequests.length > 0 || allFeedback.length > 0;
 
-    if (openai && (memories.length > 0 || requests.length > 0)) {
+    if (openai && hasData) {
       try {
-        const memoryBlock = memories.length > 0 ? "Stay notes / memories:\n" + memories.slice(0, 10).join("\n") + "\n" : "";
-        const requestBlock =
-          requests.length > 0
-            ? "Requests and complaints this stay:\n" +
-              requests
-                .slice(0, 15)
-                .map((r) => `- [${r.type}] ${r.description} (${r.status ?? "open"})`)
-                .join("\n")
-            : "";
+        const systemPrompt =
+          guests.length > 1
+            ? "You are a hotel manager's assistant. Summarize the overall stay for ALL guests in this room in 2-4 sentences. Include the length of stay (from check-in to check-out/now). Use each guest's stay notes, requests/complaints (note which were fulfilled), and checkout feedback. Mention who had which requests or feedback when relevant. Then on a new line write 'TAGS:' followed by 3-5 comma-separated short tags. Use only the line 'TAGS: tag1, tag2, tag3' with no other text on that line."
+            : "You are a hotel manager's assistant. Summarize this guest's overall stay in 2-4 sentences. Include the length of stay (from check-in to check-out/now). Use their stay notes, requests/complaints (note which were fulfilled), and checkout feedback. Then on a new line write 'TAGS:' followed by 3-5 comma-separated short tags. Use only the line 'TAGS: tag1, tag2, tag3' with no other text on that line.";
         const completion = await openai.chat.completions.create({
           model: MODEL,
           messages: [
-            {
-              role: "system",
-              content:
-                "You are a hotel manager's assistant. Based on the guest's stay notes and requests, write a brief 2-3 sentence summary of this stay. Then on a new line write 'TAGS:' followed by 3-5 comma-separated short tags (e.g. early check-in, complaint, housekeeping). Use only the line 'TAGS: tag1, tag2, tag3' with no other text on that line.",
-            },
+            { role: "system", content: systemPrompt },
             {
               role: "user",
-              content: `Guest: ${guest.firstName} ${guest.lastName}, Room ${guest.room?.roomId ?? "—"}\n\n${memoryBlock}${requestBlock}`.trim(),
+              content: `Room ${roomId}\n\n${guestLines.join("\n")}`.trim(),
             },
           ],
-          max_tokens: 300,
+          max_tokens: 400,
         });
         const text = completion.choices[0]?.message?.content?.trim() ?? "";
         const tagsMatch = text.match(/TAGS:\s*(.+)$/m);
@@ -214,17 +235,17 @@ aiRouter.post("/summarize-guest", async (req, res) => {
     }
 
     if (!summary) {
-      if (memories.length > 0) {
-        summary = "Stay notes: " + memories.slice(0, 5).join(" ").slice(0, 300) + (memories.length > 5 || memories.join("").length > 300 ? "…" : "");
+      if (allMemories.length > 0) {
+        summary = "Stay notes: " + allMemories.slice(0, 5).join(" ").slice(0, 300) + (allMemories.length > 5 ? "…" : "");
         tags.push("memory");
       }
-      if (requests.length > 0) {
-        const types = [...new Set(requests.map((r) => r.type))];
-        types.forEach((t) => tags.push(t));
-        const openCount = requests.filter((r) => r.status !== "closed").length;
-        summary = (summary ? summary + " " : "") + `${requests.length} request(s) this stay (${openCount} open).`;
+      if (allRequests.length > 0) {
+        const fulfilled = allRequests.filter((r) => r.status === "closed").length;
+        summary = (summary ? summary + " " : "") + `${allRequests.length} request(s) (${fulfilled} fulfilled).`;
+        allRequests.forEach((r) => tags.push(r.type));
       }
-      if (!summary) summary = "No notes or requests recorded for this stay.";
+      if (allFeedback.length > 0) tags.push("feedback");
+      if (!summary) summary = "No notes, requests, or feedback recorded for this stay.";
     }
 
     res.json({ summary, tags });
