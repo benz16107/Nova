@@ -72,8 +72,7 @@ export default function Concierge() {
         const data = (await r.json()) as { conciergeAllowed?: boolean; error?: string } | undefined;
         if (!r.ok || data?.conciergeAllowed === false) {
           disconnect(false);
-          setErrorMsg(data?.error ?? "Account disabled. You have checked out.");
-          setStatus("error");
+          navigate("/", { replace: true });
         }
       } catch {
         // ignore network errors; keep existing state
@@ -267,154 +266,105 @@ export default function Concierge() {
   }
 
   return (
-    <div style={{ padding: 24, minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center" }}>
-      <div style={{ position: "absolute", top: 16, left: 16, right: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <Link to="/" style={{ color: "#888", textDecoration: "none" }}>← Back</Link>
-        <button
-          type="button"
-          onClick={handleLogOut}
-          style={{ padding: "8px 16px", fontSize: 14, background: "transparent", color: "#888", border: "1px solid #ccc", borderRadius: 8, cursor: "pointer" }}
-        >
-          Log out
-        </button>
-      </div>
-      <h1 style={{ marginTop: 0 }}>Nova</h1>
-      {guestName ? (
-        <p style={{ color: "#333", marginTop: 4, marginBottom: 8, fontSize: 18 }}>Welcome, {guestName}</p>
-      ) : null}
-      <p style={{ color: "#888", marginBottom: 16 }}>Choose how you want to talk and how you want Nova to respond.</p>
+    <div className="g-screen">
+      <nav className="g-nav">
+        <Link to="/" className="g-nav-back">← Back</Link>
+        <button type="button" className="g-btn g-btn-ghost" onClick={handleLogOut}>Log out</button>
+      </nav>
+
+      <h1 className="g-page-title g-mb-1" style={{ marginTop: 8 }}>Nova</h1>
+      {guestName && <p className="g-subtitle g-mb-2" style={{ color: "var(--g-text)", fontSize: "1.125rem" }}>Hi, {guestName}</p>}
+      <p className="g-subtitle g-mb-3">Choose how you want to talk and how Nova should respond.</p>
 
       {status === "idle" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 24, alignItems: "center" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", justifyContent: "center" }}>
-            <span style={{ fontWeight: 600 }}>You:</span>
-            <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
-              <input type="radio" name="input" checked={inputMode === "voice"} onChange={() => setInputMode("voice")} />
-              Voice
-            </label>
-            <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
-              <input type="radio" name="input" checked={inputMode === "text"} onChange={() => setInputMode("text")} />
-              Text
-            </label>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", justifyContent: "center" }}>
-            <span style={{ fontWeight: 600 }}>Nova:</span>
-            <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
-              <input type="radio" name="output" checked={outputMode === "voice"} onChange={() => setOutputMode("voice")} />
-              Voice
-            </label>
-            <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
-              <input type="radio" name="output" checked={outputMode === "text"} onChange={() => setOutputMode("text")} />
-              Text
-            </label>
-          </div>
+        <div className="g-toggles g-mb-3">
+          <span style={{ fontSize: "0.9375rem", fontWeight: 600, color: "var(--g-text-muted)", marginRight: 4 }}>You:</span>
+          <label className={`g-toggle-pill ${inputMode === "voice" ? "active" : ""}`}>
+            <input type="radio" name="input" checked={inputMode === "voice"} onChange={() => setInputMode("voice")} />
+            Voice
+          </label>
+          <label className={`g-toggle-pill ${inputMode === "text" ? "active" : ""}`}>
+            <input type="radio" name="input" checked={inputMode === "text"} onChange={() => setInputMode("text")} />
+            Text
+          </label>
+          <span style={{ width: 16 }} />
+          <span style={{ fontSize: "0.9375rem", fontWeight: 600, color: "var(--g-text-muted)", marginRight: 4 }}>Nova:</span>
+          <label className={`g-toggle-pill ${outputMode === "voice" ? "active" : ""}`}>
+            <input type="radio" name="output" checked={outputMode === "voice"} onChange={() => setOutputMode("voice")} />
+            Voice
+          </label>
+          <label className={`g-toggle-pill ${outputMode === "text" ? "active" : ""}`}>
+            <input type="radio" name="output" checked={outputMode === "text"} onChange={() => setOutputMode("text")} />
+            Text
+          </label>
         </div>
       )}
 
       {status === "idle" && (
-        <button
-          type="button"
-          onClick={() => start()}
-          style={{ padding: "16px 32px", fontSize: 18, background: "#3b82f6", color: "#fff", border: "none", borderRadius: 12, cursor: "pointer" }}
-        >
+        <button type="button" className="g-btn g-btn-primary" onClick={() => start()} style={{ padding: "16px 40px", fontSize: "1.125rem" }}>
           Start
         </button>
       )}
-      {status === "connecting" && <p>Connecting…</p>}
+
+      {status === "connecting" && (
+        <p className="g-subtitle">Connecting…</p>
+      )}
 
       {status === "connected" && (
-        <div style={{ width: "100%", maxWidth: 480, display: "flex", flexDirection: "column", gap: 12, flex: 1, minHeight: 200 }}>
+        <div style={{ width: "100%", maxWidth: 440, display: "flex", flexDirection: "column", gap: 12, flex: 1, minHeight: 200 }}>
           {(outputMode === "text" || inputMode === "text") && (
-            <div
-              style={{
-                flex: 1,
-                minHeight: 200,
-                maxHeight: 320,
-                overflow: "auto",
-                border: "1px solid #ddd",
-                borderRadius: 12,
-                padding: 12,
-                background: "#fafafa",
-              }}
-            >
+            <div className="g-chat-wrap">
               {messages.length === 0 && outputMode === "text" && (
-                <p style={{ color: "#888", margin: 0, fontSize: 14 }}>Send a message below. Nova will reply here.</p>
+                <p className="g-subtitle" style={{ margin: 0, fontSize: "0.875rem" }}>Send a message below. Nova will reply here.</p>
               )}
               {messages.map((m, i) => (
-                <div
-                  key={i}
-                  style={{
-                    textAlign: m.role === "user" ? "right" : "left",
-                    marginBottom: 8,
-                  }}
-                >
-                  <span
-                    style={{
-                      display: "inline-block",
-                      padding: "8px 12px",
-                      borderRadius: 12,
-                      background: m.role === "user" ? "#3b82f6" : "#e5e7eb",
-                      color: m.role === "user" ? "#fff" : "#111",
-                      maxWidth: "85%",
-                    }}
-                  >
-                    {m.text}
-                  </span>
+                <div key={i} className={`g-chat-msg ${m.role}`}>
+                  <span className={`g-chat-bubble ${m.role}`}>{m.text}</span>
                 </div>
               ))}
               {streamingText && (
-                <div style={{ textAlign: "left", marginBottom: 8 }}>
-                  <span
-                    style={{
-                      display: "inline-block",
-                      padding: "8px 12px",
-                      borderRadius: 12,
-                      background: "#e5e7eb",
-                      color: "#111",
-                      maxWidth: "85%",
-                    }}
-                  >
-                    {streamingText}
-                  </span>
+                <div className="g-chat-msg assistant">
+                  <span className="g-chat-bubble assistant">{streamingText}</span>
                 </div>
               )}
               <div ref={chatEndRef} />
             </div>
           )}
           {status === "connected" && inputMode === "text" && (
-            <div style={{ display: "flex", gap: 8 }}>
+            <div className="g-chat-input-row">
               <input
                 type="text"
+                className="g-input"
                 value={textInput}
                 onChange={(e) => setTextInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendText()}
                 placeholder="Type a message…"
-                style={{ flex: 1, padding: "12px 16px", borderRadius: 12, border: "1px solid #ddd", fontSize: 16 }}
               />
-              <button
-                type="button"
-                onClick={sendText}
-                disabled={!textInput.trim()}
-                style={{ padding: "12px 24px", background: "#3b82f6", color: "#fff", border: "none", borderRadius: 12, cursor: "pointer", fontWeight: 600 }}
-              >
+              <button type="button" className="g-btn g-btn-primary" onClick={sendText} disabled={!textInput.trim()}>
                 Send
               </button>
             </div>
           )}
-          {status === "connected" && inputMode === "voice" && outputMode === "voice" && (
-            <p style={{ color: "#4ade80", margin: 0 }}>Connected. Speak now.</p>
+          {status === "connected" && (inputMode === "voice" || outputMode === "voice") && (
+            <p className="g-subtitle" style={{ margin: 0 }}>
+              <span className="g-status-dot" />
+              {inputMode === "voice" && outputMode === "voice" ? "Connected. Speak now." : "Connected. Speak; replies will appear above."}
+            </p>
           )}
-          {status === "connected" && inputMode === "voice" && outputMode === "text" && (
-            <p style={{ color: "#4ade80", margin: 0 }}>Connected. Speak; replies will appear above.</p>
-          )}
-          <button type="button" onClick={() => disconnect()} style={{ marginTop: 8, padding: "10px 20px", background: "#333", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", alignSelf: "center" }}>
-            End
+          <button type="button" className="g-btn g-btn-secondary g-mt-2" onClick={() => disconnect()} style={{ alignSelf: "center" }}>
+            End session
           </button>
         </div>
       )}
 
-      {status === "error" && <p style={{ color: "#e66" }}>{errorMsg}</p>}
-      {status === "error" && <button type="button" onClick={() => { setStatus("idle"); setErrorMsg(""); }} style={{ marginTop: 8, padding: "10px 20px", cursor: "pointer" }}>Try again</button>}
+      {status === "error" && (
+        <div className="g-max-w-wide" style={{ textAlign: "center" }}>
+          <p className="g-error-msg g-mb-2">{errorMsg}</p>
+          <button type="button" className="g-btn g-btn-primary" onClick={() => { setStatus("idle"); setErrorMsg(""); }}>
+            Try again
+          </button>
+        </div>
+      )}
     </div>
   );
 }

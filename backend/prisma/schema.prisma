@@ -32,18 +32,22 @@ model Guest {
   updatedAt            DateTime            @updatedAt
   requests             Request[]
   conciergeSessions    ConciergeSession[]
+  feedback             Feedback[]
 }
 
 model Request {
-  id          String    @id @default(cuid())
-  guestId     String
-  guest       Guest     @relation(fields: [guestId], references: [id])
-  roomId      String    // room number "101" for dashboard
-  type        String    // "request" | "complaint"
-  description String
-  status      String?   // "open" | "closed"; null = open for backwards compat
-  closedAt    DateTime? // when manager closed the request
-  createdAt   DateTime  @default(now())
+  id                    String    @id @default(cuid())
+  guestId               String
+  guest                 Guest     @relation(fields: [guestId], references: [id])
+  roomId                String    // room number "101" for dashboard
+  type                  String    // "request" | "complaint"
+  description           String
+  status                String?   // "open" | "closed"; null = open for backwards compat
+  closedAt              DateTime? // when manager closed the request
+  createdAt             DateTime  @default(now())
+  managerReply          String?   // manager's reply to the guest
+  managerRepliedAt      DateTime?
+  managerReplyShownAt   DateTime? // when Nova delivered the reply to the guest (so we only show once)
 }
 
 model ConciergeSession {
@@ -59,4 +63,14 @@ model Setting {
   id    String @id @default(cuid())
   key   String @unique
   value String // JSON or plain string
+}
+
+model Feedback {
+  id        String   @id @default(cuid())
+  guestId   String
+  guest     Guest    @relation(fields: [guestId], references: [id])
+  roomId    String   // room number e.g. "101"
+  content   String
+  source    String?  // "text" | "voice"
+  createdAt DateTime @default(now())
 }

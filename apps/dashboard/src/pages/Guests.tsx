@@ -56,9 +56,12 @@ export default function Guests() {
   const [stayContextMemories, setStayContextMemories] = useState<string[]>([]);
   const [stayContextLoading, setStayContextLoading] = useState(false);
   const [checkOutSummary, setCheckOutSummary] = useState<{
-    guest: { id: string; firstName: string; lastName: string; roomId: string };
-    memories: string[];
-    requests: { type: string; description: string; createdAt: string }[];
+    roomId: string;
+    guests: Array<{
+      guest: { id: string; firstName: string; lastName: string; roomId: string };
+      memories: string[];
+      requests: { id: string; type: string; description: string; status: string; closedAt?: string | null; createdAt: string }[];
+    }>;
   } | null>(null);
   const [checkOutInProgress, setCheckOutInProgress] = useState(false);
   const [previousStayByRoom, setPreviousStayByRoom] = useState<Record<string, { memories: string[]; guest: { firstName: string; lastName: string; roomId: string } | null }>>({});
@@ -72,6 +75,7 @@ export default function Guests() {
   const [roomsFilterStatus, setRoomsFilterStatus] = useState<string>("all");
   const [roomsSearchQuery, setRoomsSearchQuery] = useState<string>("");
   const [highlightedRoomId, setHighlightedRoomId] = useState<string | null>(null);
+  const [archivedSectionExpanded, setArchivedSectionExpanded] = useState(false);
 
   function scrollToRoomInList(roomId: string) {
     const el = document.getElementById(`room-row-${roomId}`);
@@ -153,23 +157,23 @@ export default function Guests() {
   }, [stayContextGuestId, aiConfigured]);
 
   useEffect(() => {
-    if (!checkOutSummary) {
+    if (!checkOutSummary || checkOutSummary.guests.length === 0) {
       setCheckOutAiSummary(null);
       return;
     }
-    setCheckOutAiSummary(null);
     if (!aiConfigured) return;
     setCheckOutAiLoading(true);
+    const guestIds = checkOutSummary.guests.map((g) => g.guest.id);
     fetch("/api/ai/summarize-guest", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ guestId: checkOutSummary.guest.id }),
+      body: JSON.stringify(guestIds.length === 1 ? { guestId: guestIds[0] } : { guestIds }),
     })
       .then((r) => r.json())
       .then((d: { summary?: string; tags?: string[] }) => setCheckOutAiSummary({ summary: d.summary ?? "", tags: Array.isArray(d.tags) ? d.tags : [] }))
       .catch(() => setCheckOutAiSummary(null))
       .finally(() => setCheckOutAiLoading(false));
-  }, [checkOutSummary?.guest.id, aiConfigured]);
+  }, [checkOutSummary?.roomId, checkOutSummary?.guests?.length, aiConfigured]);
 
   useEffect(() => {
     if (!expandedRoomId) return;
@@ -328,22 +332,33 @@ export default function Guests() {
     const main = room.guests?.[0];
     if (!main) return;
     fetch(`/api/guests/${main.id}/check-out-summary`)
-      .then((r) => r.json())
-      .then((data: { guest?: { id: string; firstName: string; lastName: string; roomId: string }; memories?: string[]; requests?: { type: string; description: string; createdAt: string }[] }) => {
-        if (data.guest) setCheckOutSummary({
-          guest: data.guest,
-          memories: Array.isArray(data.memories) ? data.memories : [],
-          requests: Array.isArray(data.requests) ? data.requests : [],
-        });
+      .then((r) => {
+        if (!r.ok) return null;
+        return r.json();
       })
-      .catch(() => setCheckOutSummary(null));
+      .then((data: {
+        roomId?: string;
+        guests?: Array<{
+          guest: { id: string; firstName: string; lastName: string; roomId: string };
+          memories: string[];
+          requests: { id: string; type: string; description: string; status: string; closedAt?: string | null; createdAt: string }[];
+        }>;
+      } | null) => {
+        if (data?.roomId && Array.isArray(data.guests) && data.guests.length > 0) {
+          setCheckOutSummary({
+            roomId: data.roomId,
+            guests: data.guests,
+          });
+        }
+      })
+      .catch(() => {});
   }
 
   async function handleCheckOutConfirm() {
-    if (!checkOutSummary) return;
+    if (!checkOutSummary || checkOutSummary.guests.length === 0) return;
     setCheckOutInProgress(true);
     try {
-      await fetch(`/api/guests/${checkOutSummary.guest.id}/check-out`, { method: "POST" });
+      await fetch(`/api/guests/${checkOutSummary.guests[0].guest.id}/check-out`, { method: "POST" });
       setCheckOutSummary(null);
       load();
     } finally {
@@ -686,39 +701,57 @@ ${(d.requests?.length ?? 0) > 0 ? `<section><strong>Requests & complaints</stron
       {checkOutSummary && (
         <div className="modal-overlay" onClick={() => !checkOutInProgress && setCheckOutSummary(null)}>
           <div className="modal" style={{ minWidth: 400, maxHeight: "80vh", overflow: "auto" }} onClick={(e) => e.stopPropagation()}>
-            <h2 className="modal-title">Check-out summary · {checkOutSummary.guest.firstName} {checkOutSummary.guest.lastName} · Room {checkOutSummary.guest.roomId}</h2>
-            <p className="text-muted mb-2">Confirm nothing is left open, then check out.</p>
+            <h2 className="modal-title">
+              Check-out summary · Room {checkOutSummary.roomId}
+              {checkOutSummary.guests.length > 0 && (
+                <span className="text-muted" style={{ fontWeight: 500, fontSize: "0.95rem" }}>
+                  {" "}({checkOutSummary.guests.map((g) => `${g.guest.firstName} ${g.guest.lastName}`).join(", ")})
+                </span>
+              )}
+            </h2>
+            <p className="text-muted mb-2">Confirm nothing is left open, then check out all guests in this room.</p>
             {checkOutAiLoading && <p className="text-muted mb-2">Generating AI summary…</p>}
             {checkOutAiSummary && !checkOutAiLoading && (
               <div className="card-body mb-2" style={{ background: "var(--accent-soft)", border: "1px solid var(--border)" }}>
-                <div className="section-title" style={{ marginBottom: "0.5rem" }}>AI summary</div>
+                <div className="section-title" style={{ marginBottom: "0.5rem" }}>AI summary (all guests)</div>
                 <p style={{ margin: "0 0 0.5rem 0", fontSize: "0.95rem" }}>{checkOutAiSummary.summary}</p>
                 {checkOutAiSummary.tags.length > 0 && <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>Tags: {checkOutAiSummary.tags.join(", ")}</p>}
               </div>
             )}
-            {checkOutSummary.memories.length > 0 && (
-              <div className="mb-2">
-                <div className="section-title" style={{ marginBottom: "0.25rem" }}>Stay context (Nova memory)</div>
-                <ul style={{ margin: 0, paddingLeft: "1.25rem", fontSize: "0.9rem" }}>
-                  {checkOutSummary.memories.map((m, i) => (
-                    <li key={i} className="mb-0">{m}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {checkOutSummary.requests.length > 0 && (
-              <div className="mb-2">
-                <div className="section-title" style={{ marginBottom: "0.25rem" }}>Logged requests & complaints</div>
-                <ul style={{ margin: 0, paddingLeft: "1.25rem", fontSize: "0.9rem" }}>
-                  {checkOutSummary.requests.map((r, i) => (
-                    <li key={i} className="mb-0"><strong>{r.type}</strong>: {r.description}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {checkOutSummary.memories.length === 0 && checkOutSummary.requests.length === 0 && (
-              <p className="text-muted mb-2" style={{ fontSize: "0.9rem" }}>No requests or memories this stay.</p>
-            )}
+            {checkOutSummary.guests.map((entry, idx) => {
+              const hasData = entry.memories.length > 0 || entry.requests.length > 0;
+              return (
+                <div key={entry.guest.id} className="mb-3" style={{ borderBottom: idx < checkOutSummary.guests.length - 1 ? "1px solid var(--border)" : undefined, paddingBottom: idx < checkOutSummary.guests.length - 1 ? "1rem" : 0 }}>
+                  <div className="section-title" style={{ marginBottom: "0.35rem" }}>{entry.guest.firstName} {entry.guest.lastName}</div>
+                  {entry.memories.length > 0 && (
+                    <div className="mb-2">
+                      <span className="text-muted" style={{ fontSize: "0.8125rem" }}>Stay context: </span>
+                      <ul style={{ margin: "0.25rem 0 0 1.25rem", padding: 0, fontSize: "0.9rem" }}>
+                        {entry.memories.map((m, i) => (
+                          <li key={i} className="mb-0">{m}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {entry.requests.length > 0 && (
+                    <div className="mb-2">
+                      <span className="text-muted" style={{ fontSize: "0.8125rem" }}>Requests & complaints: </span>
+                      <ul style={{ margin: "0.25rem 0 0 1.25rem", padding: 0, fontSize: "0.9rem" }}>
+                        {entry.requests.map((r) => (
+                          <li key={r.id} className="mb-0">
+                            <strong>{r.type}</strong>: {r.description}
+                            <span className="text-muted" style={{ marginLeft: "0.35rem", fontSize: "0.8125rem" }}>
+                              {r.status === "closed" ? "— Fulfilled" : "— Open"}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {!hasData && <p className="text-muted mb-0" style={{ fontSize: "0.85rem" }}>No requests or memories.</p>}
+                </div>
+              );
+            })}
             <div className="flex gap-1 mt-2">
               <button type="button" className="btn btn-primary" onClick={handleCheckOutConfirm} disabled={checkOutInProgress}>
                 {checkOutInProgress ? "Checking out…" : "Confirm check-out"}
@@ -792,7 +825,8 @@ ${(d.requests?.length ?? 0) > 0 ? `<section><strong>Requests & complaints</stron
                   <th>Guest</th>
                   <th>Guests</th>
                   <th>Status</th>
-                  <th>Time</th>
+                  <th>Reserved</th>
+                  <th>Checked in</th>
                   <th></th>
                 </tr>
               </thead>
@@ -835,7 +869,6 @@ ${(d.requests?.length ?? 0) > 0 ? `<section><strong>Requests & complaints</stron
                   const main = sortedGuests[0];
                   const additional = sortedGuests.slice(1);
                   const statusText = !main ? "—" : main.checkedOut ? "Checked out" : main.checkedIn ? "Checked in" : "Reserved";
-                  const statusTime = !main ? "—" : main.checkedIn ? formatTime(main.checkedInAt) : formatTime(main.createdAt);
                   const isExpanded = expandedRoomId === r.id || (searchLower !== "" && autoExpandedRoomIds.has(r.id));
                   return (
                     <Fragment key={r.id}>
@@ -853,7 +886,8 @@ ${(d.requests?.length ?? 0) > 0 ? `<section><strong>Requests & complaints</stron
                           </span>
                         </td>
                         <td style={{ whiteSpace: "nowrap" }}>{statusText}</td>
-                        <td>{statusTime}</td>
+                        <td style={{ whiteSpace: "nowrap" }}>{main ? formatTime(main.createdAt) : "—"}</td>
+                        <td style={{ whiteSpace: "nowrap" }}>{main && main.checkedInAt ? formatTime(main.checkedInAt) : "—"}</td>
                         <td style={{ whiteSpace: "nowrap" }}>
                           <div className="flex align-center gap-1" style={{ gap: "0.35rem", flexWrap: "nowrap" }}>
                             <button type="button" className="btn btn-sm" onClick={(e) => openAddGuestModal(r.roomId, e)}>Add guest</button>
@@ -960,84 +994,110 @@ ${(d.requests?.length ?? 0) > 0 ? `<section><strong>Requests & complaints</stron
       </section>
       <section className="card mt-3" style={{ overflow: "visible" }}>
         <div className="card-body">
-          <h2 className="section-title">Archived rooms</h2>
-          <p className="text-muted mb-2" style={{ marginBottom: "0.75rem" }}>Checked-out or archived rooms are listed here.</p>
-          <div className="table-wrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Room</th>
-                  <th>Guest</th>
-                  <th>Archived via</th>
-                  <th>Time</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {(() => {
-                  const byRoom = new Map<string, Guest[]>();
-                  for (const g of archivedGuests) {
-                    const id = g.roomId;
-                    if (!byRoom.has(id)) byRoom.set(id, []);
-                    byRoom.get(id)!.push(g);
-                  }
-                  const archivedRooms = Array.from(byRoom.entries()).map(([id, guests]) => {
-                    const sorted = [...guests].sort(
-                      (a, b) => new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime()
-                    );
-                    const roomDisplayId = (sorted[0] as Guest & { room?: { roomId: string } }).room?.roomId ?? "—";
-                    return { id, roomId: roomDisplayId, guests: sorted };
-                  });
-                  if (archivedRooms.length === 0) {
-                    return <tr><td colSpan={5} className="text-muted" style={{ padding: "1.5rem" }}>No archived rooms yet.</td></tr>;
-                  }
-                  return archivedRooms.map((ar) => {
-                    const main = ar.guests[0];
-                    const additional = ar.guests.slice(1);
-                    const isExpanded = expandedArchivedRoomId === ar.id;
-                    return (
-                      <Fragment key={ar.id}>
-                        <tr>
-                          <td>{ar.roomId}</td>
-                          <td>
-                            {main ? `${main.firstName} ${main.lastName}` : "—"}
-                            {additional.length > 0 && (
-                              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setExpandedArchivedRoomId(isExpanded ? null : ar.id)} style={{ marginLeft: 4 }}>
-                                Additional guests ({additional.length}) {isExpanded ? "▼" : "▶"}
-                              </button>
-                            )}
-                          </td>
-                          <td>{main ? archiveReasonLabel(main.archivedVia) : "—"}</td>
-                          <td>{main ? formatTime(main.checkedOutAt) : "—"}</td>
-                          <td>
-                            <button type="button" className="btn btn-sm" onClick={() => handleRestoreRoom(ar)}>Re-add to rooms</button>
-                            {" "}
-                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => handleDeleteRoom(ar)}>Delete room</button>
-                          </td>
-                        </tr>
-                        {isExpanded && additional.length > 0 && (
+          <div className="flex align-center gap-2" style={{ flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", marginBottom: archivedSectionExpanded ? "0.75rem" : 0 }}>
+            <div>
+              <h2 className="section-title" style={{ marginBottom: 4 }}>Archived rooms</h2>
+              <p className="text-muted" style={{ margin: 0 }}>
+                {archivedSectionExpanded
+                  ? "Checked-out or archived rooms are listed here."
+                  : (() => {
+                      const byRoom = new Map<string, Guest[]>();
+                      for (const g of archivedGuests) {
+                        const id = g.roomId;
+                        if (!byRoom.has(id)) byRoom.set(id, []);
+                        byRoom.get(id)!.push(g);
+                      }
+                      const count = byRoom.size;
+                      return count === 0 ? "No archived rooms yet." : `${count} archived room${count === 1 ? "" : "s"}.`;
+                    })()}
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => setArchivedSectionExpanded((v) => !v)}
+            >
+              {archivedSectionExpanded ? "Hide" : "Show"}
+            </button>
+          </div>
+          {archivedSectionExpanded && (
+            <div className="table-wrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Room</th>
+                    <th>Guest</th>
+                    <th>Archived via</th>
+                    <th>Time</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    const byRoom = new Map<string, Guest[]>();
+                    for (const g of archivedGuests) {
+                      const id = g.roomId;
+                      if (!byRoom.has(id)) byRoom.set(id, []);
+                      byRoom.get(id)!.push(g);
+                    }
+                    const archivedRooms = Array.from(byRoom.entries()).map(([id, guests]) => {
+                      const sorted = [...guests].sort(
+                        (a, b) => new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime()
+                      );
+                      const roomDisplayId = (sorted[0] as Guest & { room?: { roomId: string } }).room?.roomId ?? "—";
+                      return { id, roomId: roomDisplayId, guests: sorted };
+                    });
+                    if (archivedRooms.length === 0) {
+                      return <tr><td colSpan={5} className="text-muted" style={{ padding: "1.5rem" }}>No archived rooms yet.</td></tr>;
+                    }
+                    return archivedRooms.map((ar) => {
+                      const main = ar.guests[0];
+                      const additional = ar.guests.slice(1);
+                      const isExpanded = expandedArchivedRoomId === ar.id;
+                      return (
+                        <Fragment key={ar.id}>
                           <tr>
-                            <td colSpan={5} style={{ padding: 0, verticalAlign: "top", borderBottom: "1px solid var(--border)" }}>
-                              <div className="card-body" style={{ background: "var(--surface-hover)", padding: "1rem" }}>
-                                <div className="section-title" style={{ marginBottom: "0.5rem" }}>Additional guests</div>
-                                {additional.map((g) => (
-                                  <div key={g.id} className="flex align-center gap-1 mb-1" style={{ padding: "0.5rem 0", borderBottom: "1px solid var(--border)" }}>
-                                    <span style={{ minWidth: 120 }}>{g.firstName} {g.lastName}</span>
-                                    <span className="text-muted">{archiveReasonLabel(g.archivedVia)}</span>
-                                    <span className="text-muted" style={{ fontSize: "0.85rem" }}>{formatTime(g.checkedOutAt)}</span>
-                                  </div>
-                                ))}
-                              </div>
+                            <td>{ar.roomId}</td>
+                            <td>
+                              {main ? `${main.firstName} ${main.lastName}` : "—"}
+                              {additional.length > 0 && (
+                                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setExpandedArchivedRoomId(isExpanded ? null : ar.id)} style={{ marginLeft: 4 }}>
+                                  Additional guests ({additional.length}) {isExpanded ? "▼" : "▶"}
+                                </button>
+                              )}
+                            </td>
+                            <td>{main ? archiveReasonLabel(main.archivedVia) : "—"}</td>
+                            <td>{main ? formatTime(main.checkedOutAt) : "—"}</td>
+                            <td>
+                              <button type="button" className="btn btn-sm" onClick={() => handleRestoreRoom(ar)}>Re-add to rooms</button>
+                              {" "}
+                              <button type="button" className="btn btn-ghost btn-sm" onClick={() => handleDeleteRoom(ar)}>Delete room</button>
                             </td>
                           </tr>
-                        )}
-                      </Fragment>
-                    );
-                  });
-                })()}
-              </tbody>
-            </table>
-          </div>
+                          {isExpanded && additional.length > 0 && (
+                            <tr>
+                              <td colSpan={5} style={{ padding: 0, verticalAlign: "top", borderBottom: "1px solid var(--border)" }}>
+                                <div className="card-body" style={{ background: "var(--surface-hover)", padding: "1rem" }}>
+                                  <div className="section-title" style={{ marginBottom: "0.5rem" }}>Additional guests</div>
+                                  {additional.map((g) => (
+                                    <div key={g.id} className="flex align-center gap-1 mb-1" style={{ padding: "0.5rem 0", borderBottom: "1px solid var(--border)" }}>
+                                      <span style={{ minWidth: 120 }}>{g.firstName} {g.lastName}</span>
+                                      <span className="text-muted">{archiveReasonLabel(g.archivedVia)}</span>
+                                      <span className="text-muted" style={{ fontSize: "0.85rem" }}>{formatTime(g.checkedOutAt)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      );
+                    });
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </section>
     </div>

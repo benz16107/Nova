@@ -50,43 +50,41 @@ export default function Activate() {
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 360, margin: "0 auto" }}>
-      <h1 style={{ marginTop: 0 }}>Activate your room</h1>
-      <p style={{ color: "#888", marginBottom: 24 }}>Enter your room number and name.</p>
-      <form onSubmit={handleSubmit}>
-        <input
-          type="text"
-          placeholder="Room number"
-          value={roomId}
-          onChange={(e) => setRoomId(e.target.value)}
-          autoComplete="off"
-          style={{ width: "100%", padding: 12, marginBottom: 12, borderRadius: 8, border: "1px solid #333" }}
-        />
-        <input
-          type="text"
-          placeholder="First name"
-          value={firstName}
-          onChange={(e) => setFirstName(e.target.value)}
-          autoComplete="given-name"
-          style={{ width: "100%", padding: 12, marginBottom: 12, borderRadius: 8, border: "1px solid #333" }}
-        />
-        <input
-          type="text"
-          placeholder="Last name"
-          value={lastName}
-          onChange={(e) => setLastName(e.target.value)}
-          autoComplete="family-name"
-          style={{ width: "100%", padding: 12, marginBottom: 12, borderRadius: 8, border: "1px solid #333" }}
-        />
-        {error && <p style={{ color: "#e66", fontSize: 14, marginBottom: 12 }}>{error}</p>}
-        <button
-          type="submit"
-          disabled={loading}
-          style={{ width: "100%", padding: 14, fontSize: 16, background: "#3b82f6", color: "#fff", border: "none", borderRadius: 8, cursor: loading ? "not-allowed" : "pointer" }}
-        >
-          {loading ? "Activating…" : "Activate"}
-        </button>
-      </form>
+    <div className="g-screen g-screen-centered">
+      <div className="g-card g-max-w" style={{ padding: "32px 24px" }}>
+        <h1 className="g-page-title g-mb-1">Activate your room</h1>
+        <p className="g-subtitle g-mb-3">Enter your room number and name to get started.</p>
+        <form onSubmit={handleSubmit}>
+          <input
+            type="text"
+            className="g-input g-mb-2"
+            placeholder="Room number"
+            value={roomId}
+            onChange={(e) => setRoomId(e.target.value)}
+            autoComplete="off"
+          />
+          <input
+            type="text"
+            className="g-input g-mb-2"
+            placeholder="First name"
+            value={firstName}
+            onChange={(e) => setFirstName(e.target.value)}
+            autoComplete="given-name"
+          />
+          <input
+            type="text"
+            className="g-input g-mb-2"
+            placeholder="Last name"
+            value={lastName}
+            onChange={(e) => setLastName(e.target.value)}
+            autoComplete="family-name"
+          />
+          {error && <p className="g-error-msg g-mb-2">{error}</p>}
+          <button type="submit" className="g-btn g-btn-primary" disabled={loading} style={{ width: "100%" }}>
+            {loading ? "Activating…" : "Activate"}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }

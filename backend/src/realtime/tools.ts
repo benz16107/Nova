@@ -21,7 +21,8 @@ export async function handleLogRequest(
   });
   const content = type === "complaint" ? `Complaint: ${description}` : `Request: ${description}`;
   await addMemory(ctx.guestId, ctx.roomId, content);
-  return `Done. Tell the guest: I've logged that and the team has been notified.`;
+  const typeLabel = type === "complaint" ? "complaint" : "request";
+  return `Done. Tell the guest: I've logged your ${typeLabel} and the team has been notified. If the manager replies, you'll see their reply the next time you open Nova.`;
 }
 
 export async function handleGetWifiInfo(): Promise<string> {
@@ -30,6 +31,18 @@ export async function handleGetWifiInfo(): Promise<string> {
 
 export async function handleRequestAmenity(ctx: ToolContext, item: string): Promise<string> {
   return handleLogRequest(ctx, "request", `Request amenity: ${item}`);
+}
+
+export async function handleSubmitFeedback(ctx: ToolContext, content: string, source: "text" | "voice"): Promise<string> {
+  await prisma.feedback.create({
+    data: {
+      guestId: ctx.guestId,
+      roomId: ctx.roomId,
+      content: content.trim(),
+      source,
+    },
+  });
+  return "Done. Tell the guest: Thank you, your feedback has been recorded and will be shared with the team.";
 }
 
 export async function runTool(
@@ -48,6 +61,12 @@ export async function runTool(
       return handleGetWifiInfo();
     case "request_amenity":
       return handleRequestAmenity(ctx, String(args.item ?? ""));
+    case "submit_feedback":
+      return handleSubmitFeedback(
+        ctx,
+        String(args.content ?? ""),
+        args.source === "voice" ? "voice" : "text",
+      );
     default:
       return `Unknown tool: ${name}`;
   }

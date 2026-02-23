@@ -202,6 +202,17 @@ export async function getMemoriesForGuest(guestId: string): Promise<string[]> {
   return all.filter((m) => m.guest_id === guestId).map((m) => m.content);
 }
 
+/**
+ * Get memories for all guests that stayed in this room (room_id in metadata).
+ * Returns content plus guest_id for attribution.
+ */
+export async function getMemoriesForRoom(roomId: string): Promise<{ guestId: string; content: string }[]> {
+  const all = await getAllMemoriesRaw();
+  return all
+    .filter((m) => m.room_id === String(roomId))
+    .map((m) => ({ guestId: m.guest_id, content: m.content }));
+}
+
 /** Add a memory for this guest only (metadata isolates it to this stay). */
 export async function addMemory(
   guestId: string,

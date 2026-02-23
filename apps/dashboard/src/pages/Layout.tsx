@@ -7,6 +7,7 @@ export default function Layout() {
   const nav = [
     { path: "/guests", label: "Guests & Rooms" },
     { path: "/requests", label: "Requests & Complaints" },
+    { path: "/feedback", label: "Feedback and suggestions" },
     { path: "/settings", label: "Settings" },
   ];
   return (
