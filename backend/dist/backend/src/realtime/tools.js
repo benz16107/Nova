@@ -19,10 +19,10 @@ async function handleLogRequest(ctx, type, description) {
     });
     const content = type === "complaint" ? `Complaint: ${description}` : `Request: ${description}`;
     await (0, backboard_js_1.addMemory)(ctx.guestId, ctx.roomId, content);
-    return `Logged ${type}: ${description}. The manager has been notified.`;
+    return `Done. Tell the guest: I've logged that and the team has been notified.`;
 }
 async function handleGetWifiInfo() {
-    return `WiFi network: ${WIFI_NAME}, Password: ${WIFI_PASSWORD}.`;
+    return `Tell the guest: The WiFi network is ${WIFI_NAME} and the password is ${WIFI_PASSWORD}.`;
 }
 async function handleRequestAmenity(ctx, item) {
     return handleLogRequest(ctx, "request", `Request amenity: ${item}`);

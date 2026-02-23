@@ -18,7 +18,7 @@ const TOOLS = [
     {
         type: "function",
         name: "log_request",
-        description: "Log a guest request or complaint. Use for any request (e.g. towels, room service) or complaint.",
+        description: "Log a guest request or complaint. Use for any request (e.g. towels, room service) or complaint. After calling, always confirm to the guest that it was logged.",
         parameters: {
             type: "object",
             properties: {
@@ -31,13 +31,13 @@ const TOOLS = [
     {
         type: "function",
         name: "get_wifi_info",
-        description: "Get the hotel WiFi network name and password.",
+        description: "Get the hotel WiFi network name and password. After calling, always tell the guest the network and password out loud.",
         parameters: { type: "object", properties: {} },
     },
     {
         type: "function",
         name: "request_amenity",
-        description: "Log a request for an amenity (e.g. extra towels, pillows).",
+        description: "Log a request for an amenity (e.g. extra towels, pillows). After calling, always confirm to the guest that the request was logged.",
         parameters: {
             type: "object",
             properties: { item: { type: "string" } },
@@ -165,6 +165,8 @@ function attachRealtimeWebSocket(server) {
                                 output,
                             },
                         }));
+                        // Request the model to generate a response (voice or text) so the guest hears/sees confirmation
+                        openaiWs.send(JSON.stringify({ type: "response.create" }));
                     })
                         .catch((err) => {
                         openaiWs.send(JSON.stringify({
@@ -175,6 +177,7 @@ function attachRealtimeWebSocket(server) {
                                 output: String(err),
                             },
                         }));
+                        openaiWs.send(JSON.stringify({ type: "response.create" }));
                     });
                     return;
                 }

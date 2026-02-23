@@ -21,11 +21,11 @@ export async function handleLogRequest(
   });
   const content = type === "complaint" ? `Complaint: ${description}` : `Request: ${description}`;
   await addMemory(ctx.guestId, ctx.roomId, content);
-  return `Logged ${type}: ${description}. The manager has been notified.`;
+  return `Done. Tell the guest: I've logged that and the team has been notified.`;
 }
 
 export async function handleGetWifiInfo(): Promise<string> {
-  return `WiFi network: ${WIFI_NAME}, Password: ${WIFI_PASSWORD}.`;
+  return `Tell the guest: The WiFi network is ${WIFI_NAME} and the password is ${WIFI_PASSWORD}.`;
 }
 
 export async function handleRequestAmenity(ctx: ToolContext, item: string): Promise<string> {

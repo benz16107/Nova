@@ -32,3 +32,10 @@ Base URL: `http://localhost:3000` (or your backend URL).
 
 - **GET /api/requests** – query: optional `type`, `roomId`. List requests/complaints.
 - **GET /api/complaints** – list complaints only.
+- **GET /api/guests/:id** – get one guest. Query `?include=memories` to include Backboard memories.
+- **GET /api/guests/:id/memories** – Backboard memories for this guest (stay context).
+- **GET /api/guests/:id/check-out-summary** – guest + requests + memories for pre–check-out confirmation.
+- **GET /api/guests/:id/export** – guest summary + memories + requests (for print/handover).
+- **GET /api/memories/recent** – query: optional `limit` (default 10). Latest memories across all guests.
+- **GET /api/memories/search** – query: `q`. Search memories by content.
+- **GET /api/memories/room/:roomNumber/previous-stay** – memories from the last archived guest in this room (handover).

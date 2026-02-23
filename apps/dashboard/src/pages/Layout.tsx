@@ -7,24 +7,47 @@ export default function Layout() {
   const nav = [
     { path: "/guests", label: "Guests & Rooms" },
     { path: "/requests", label: "Requests & Complaints" },
+    { path: "/settings", label: "Settings" },
   ];
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
-      <header style={{ background: "#333", color: "#fff", padding: "12px 24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <nav style={{ display: "flex", gap: 16 }}>
+      <header
+        style={{
+          background: "var(--surface)",
+          borderBottom: "1px solid var(--border)",
+          padding: "0 1.5rem",
+          height: 56,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "1.5rem" }}>
+          <span style={{ fontSize: "var(--text-lg)", fontWeight: 600, color: "var(--text)", whiteSpace: "nowrap" }}>Manager Dashboard</span>
+          <nav style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
           {nav.map(({ path, label }) => (
             <Link
               key={path}
               to={path}
-              style={{ color: location.pathname === path ? "#fff" : "#ccc", textDecoration: "none" }}
+              className="btn btn-ghost"
+              style={{
+                textDecoration: "none",
+                color: location.pathname === path ? "var(--text)" : "var(--text-muted)",
+                fontWeight: location.pathname === path ? 600 : 500,
+                background: location.pathname === path ? "var(--surface-hover)" : "transparent",
+                borderRadius: "var(--radius-sm)",
+              }}
             >
               {label}
             </Link>
           ))}
-        </nav>
-        <button onClick={logout} style={{ background: "transparent", color: "#fff", border: "1px solid #666", padding: "6px 12px", borderRadius: 4, cursor: "pointer" }}>Log out</button>
+          </nav>
+        </div>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={logout}>
+          Log out
+        </button>
       </header>
-      <main style={{ flex: 1, padding: 24 }}>
+      <main style={{ flex: 1, padding: "1.5rem 1.5rem 2rem" }}>
         <Outlet />
       </main>
     </div>

@@ -22,6 +22,21 @@ requestsRouter.get("/", async (req, res) => {
   }
 });
 
+// PATCH /api/requests/:id/close — mark request as closed (manager completed it)
+requestsRouter.patch("/:id/close", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const request = await prisma.request.update({
+      where: { id },
+      data: { status: "closed", closedAt: new Date() },
+    });
+    res.json(request);
+  } catch (e) {
+    if (e && typeof e === "object" && "code" in e && e.code === "P2025") return res.status(404).json({ error: "Request not found" });
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 // Complaints list (mount at /api/complaints)
 export const complaintsRouter = Router();
 complaintsRouter.get("/", async (_req, res) => {
