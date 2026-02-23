@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../db.js";
+import { getMemoriesForGuest } from "../backboard.js";
 
 export const guestsRouter = Router();
 
@@ -24,7 +25,84 @@ guestsRouter.get("/:id", async (req, res) => {
       include: { room: true },
     });
     if (!guest) return res.status(404).json({ error: "Guest not found" });
+    const includeMemories = req.query.include === "memories";
+    if (includeMemories) {
+      const memories = await getMemoriesForGuest(guest.id);
+      return res.json({ ...guest, memories });
+    }
     res.json(guest);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+/** GET /api/guests/:id/memories — Backboard memories for this guest (stay context). */
+guestsRouter.get("/:id/memories", async (req, res) => {
+  try {
+    const guest = await prisma.guest.findUnique({
+      where: { id: req.params.id },
+      include: { room: true },
+    });
+    if (!guest) return res.status(404).json({ error: "Guest not found" });
+    const memories = await getMemoriesForGuest(guest.id);
+    res.json({ memories, guest: { firstName: guest.firstName, lastName: guest.lastName, roomId: guest.room.roomId } });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+/** GET /api/guests/:id/check-out-summary — guest + requests + memories for pre-check-out confirmation. */
+guestsRouter.get("/:id/check-out-summary", async (req, res) => {
+  try {
+    const guest = await prisma.guest.findUnique({
+      where: { id: req.params.id },
+      include: { room: true },
+    });
+    if (!guest) return res.status(404).json({ error: "Guest not found" });
+    const [memories, requests] = await Promise.all([
+      getMemoriesForGuest(guest.id),
+      prisma.request.findMany({ where: { guestId: guest.id }, orderBy: { createdAt: "desc" } }),
+    ]);
+    res.json({
+      guest: {
+        id: guest.id,
+        firstName: guest.firstName,
+        lastName: guest.lastName,
+        roomId: guest.room.roomId,
+        checkedInAt: guest.checkedInAt,
+      },
+      memories,
+      requests,
+    });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+/** GET /api/guests/:id/export — guest summary + memories + requests for print/handover. */
+guestsRouter.get("/:id/export", async (req, res) => {
+  try {
+    const guest = await prisma.guest.findUnique({
+      where: { id: req.params.id },
+      include: { room: true },
+    });
+    if (!guest) return res.status(404).json({ error: "Guest not found" });
+    const [memories, requests] = await Promise.all([
+      getMemoriesForGuest(guest.id),
+      prisma.request.findMany({ where: { guestId: guest.id }, orderBy: { createdAt: "desc" } }),
+    ]);
+    res.json({
+      guest: {
+        firstName: guest.firstName,
+        lastName: guest.lastName,
+        roomId: guest.room.roomId,
+        checkedInAt: guest.checkedInAt,
+        checkedOutAt: guest.checkedOutAt,
+      },
+      memories,
+      requests: requests.map((r) => ({ type: r.type, description: r.description, createdAt: r.createdAt })),
+      exportedAt: new Date().toISOString(),
+    });
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -32,13 +110,12 @@ guestsRouter.get("/:id", async (req, res) => {
 
 guestsRouter.post("/", async (req, res) => {
   try {
-    const { firstName, lastName, roomId } = req.body as {
-      firstName?: string;
-      lastName?: string;
-      roomId?: string;
-    };
+    const body = req.body as { firstName?: unknown; lastName?: unknown; roomId?: unknown };
+    const firstName = typeof body.firstName === "string" ? body.firstName.trim() : "";
+    const lastName = typeof body.lastName === "string" ? body.lastName.trim() : "";
+    const roomId = body.roomId != null ? String(body.roomId).trim() : "";
     if (!firstName || !lastName || !roomId) {
-      return res.status(400).json({ error: "firstName, lastName, roomId required" });
+      return res.status(400).json({ error: "firstName, lastName, and room number are required" });
     }
     let room = await prisma.room.findUnique({ where: { roomId } });
     if (!room) {
@@ -54,7 +131,9 @@ guestsRouter.post("/", async (req, res) => {
     });
     res.status(201).json(guest);
   } catch (e) {
-    res.status(500).json({ error: String(e) });
+    console.error("[POST /api/guests]", e);
+    const message = e instanceof Error ? e.message : String(e);
+    res.status(500).json({ error: message });
   }
 });
 
@@ -106,6 +185,23 @@ guestsRouter.post("/:id/check-in", async (req, res) => {
       data: { checkedIn: true, checkedInAt: now },
     });
     res.json({ ok: true, checkedIn: true });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+guestsRouter.post("/:id/undo-check-in", async (req, res) => {
+  try {
+    const guest = await prisma.guest.findUnique({
+      where: { id: req.params.id },
+      include: { room: true },
+    });
+    if (!guest) return res.status(404).json({ error: "Guest not found" });
+    await prisma.guest.updateMany({
+      where: { roomId: guest.roomId },
+      data: { checkedIn: false, checkedInAt: null },
+    });
+    res.json({ ok: true, checkedIn: false });
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }

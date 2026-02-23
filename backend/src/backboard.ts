@@ -163,11 +163,13 @@ export async function ensureThreadForGuest(guestId: string): Promise<string | nu
   return threadId;
 }
 
+export type MemoryItem = { guest_id: string; room_id: string; content: string };
+
 /**
- * Get memories for this guest only. Memory is stored with metadata.guest_id so each
- * stay has its own isolated memory; we filter to that guest.
+ * Fetch all memories from Backboard (for manager dashboard: recent feed, search).
+ * Returns items with guest_id and room_id from metadata.
  */
-export async function getMemoriesForGuest(guestId: string): Promise<string[]> {
+export async function getAllMemoriesRaw(): Promise<MemoryItem[]> {
   if (!BACKBOARD_MEMORY_ENABLED) return [];
   const assistantId = await resolveAssistantId();
   if (!assistantId) return [];
@@ -179,9 +181,25 @@ export async function getMemoriesForGuest(guestId: string): Promise<string[]> {
   const list = Array.isArray(raw) ? raw : [];
   return list
     .filter((m): m is Record<string, unknown> => m != null && typeof m === "object")
-    .filter((m) => String((m.metadata as Record<string, unknown>)?.guest_id ?? "") === String(guestId))
-    .map((m) => (typeof m.content === "string" ? m.content : ""))
-    .filter(Boolean);
+    .map((m) => {
+      const meta = (m.metadata as Record<string, unknown>) ?? {};
+      const content = typeof m.content === "string" ? m.content : "";
+      return {
+        guest_id: String(meta.guest_id ?? ""),
+        room_id: String(meta.room_id ?? ""),
+        content,
+      };
+    })
+    .filter((m) => m.guest_id && m.content);
+}
+
+/**
+ * Get memories for this guest only. Memory is stored with metadata.guest_id so each
+ * stay has its own isolated memory; we filter to that guest.
+ */
+export async function getMemoriesForGuest(guestId: string): Promise<string[]> {
+  const all = await getAllMemoriesRaw();
+  return all.filter((m) => m.guest_id === guestId).map((m) => m.content);
 }
 
 /** Add a memory for this guest only (metadata isolates it to this stay). */

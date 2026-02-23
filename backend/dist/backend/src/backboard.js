@@ -9,6 +9,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ensureThreadForGuest = ensureThreadForGuest;
+exports.getAllMemoriesRaw = getAllMemoriesRaw;
 exports.getMemoriesForGuest = getMemoriesForGuest;
 exports.addMemory = addMemory;
 exports.memorySummary = memorySummary;
@@ -148,6 +149,8 @@ async function createThread() {
  * Creates a thread on first use and stores it on the guest.
  */
 async function ensureThreadForGuest(guestId) {
+    if (!nova_config_js_1.BACKBOARD_MEMORY_ENABLED)
+        return null;
     const guest = await db_js_1.prisma.guest.findUnique({ where: { id: guestId } });
     if (!guest)
         return null;
@@ -165,10 +168,12 @@ async function ensureThreadForGuest(guestId) {
     return threadId;
 }
 /**
- * Get memories for this guest only. Memory is stored with metadata.guest_id so each
- * stay has its own isolated memory; we filter to that guest.
+ * Fetch all memories from Backboard (for manager dashboard: recent feed, search).
+ * Returns items with guest_id and room_id from metadata.
  */
-async function getMemoriesForGuest(guestId) {
+async function getAllMemoriesRaw() {
+    if (!nova_config_js_1.BACKBOARD_MEMORY_ENABLED)
+        return [];
     const assistantId = await resolveAssistantId();
     if (!assistantId)
         return [];
@@ -182,12 +187,29 @@ async function getMemoriesForGuest(guestId) {
     const list = Array.isArray(raw) ? raw : [];
     return list
         .filter((m) => m != null && typeof m === "object")
-        .filter((m) => String(m.metadata?.guest_id ?? "") === String(guestId))
-        .map((m) => (typeof m.content === "string" ? m.content : ""))
-        .filter(Boolean);
+        .map((m) => {
+        const meta = m.metadata ?? {};
+        const content = typeof m.content === "string" ? m.content : "";
+        return {
+            guest_id: String(meta.guest_id ?? ""),
+            room_id: String(meta.room_id ?? ""),
+            content,
+        };
+    })
+        .filter((m) => m.guest_id && m.content);
+}
+/**
+ * Get memories for this guest only. Memory is stored with metadata.guest_id so each
+ * stay has its own isolated memory; we filter to that guest.
+ */
+async function getMemoriesForGuest(guestId) {
+    const all = await getAllMemoriesRaw();
+    return all.filter((m) => m.guest_id === guestId).map((m) => m.content);
 }
 /** Add a memory for this guest only (metadata isolates it to this stay). */
 async function addMemory(guestId, roomId, content) {
+    if (!nova_config_js_1.BACKBOARD_MEMORY_ENABLED)
+        return;
     const assistantId = await resolveAssistantId();
     if (!assistantId)
         return;
@@ -206,6 +228,8 @@ function memorySummary(memories) {
     return "Past during this stay: " + memories.slice(-limit).join("; ");
 }
 async function checkBackboardConnection() {
+    if (!nova_config_js_1.BACKBOARD_MEMORY_ENABLED)
+        return { ok: false };
     const apiKey = getApiKey();
     if (!apiKey)
         return { ok: false };

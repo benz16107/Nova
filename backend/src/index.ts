@@ -27,6 +27,9 @@ import { nfcRouter } from "./routes/nfc.js";
 import { meRouter } from "./routes/me.js";
 import { requestsRouter, complaintsRouter } from "./routes/requests.js";
 import { authRouter } from "./routes/auth.js";
+import { memoriesRouter } from "./routes/memories.js";
+import { aiRouter } from "./routes/ai.js";
+import { settingsRouter } from "./routes/settings.js";
 import { attachRealtimeWebSocket } from "./realtime/proxy.js";
 import { checkBackboardConnection } from "./backboard.js";
 import { BACKBOARD_MEMORY_ENABLED } from "../../nova-config.js";
@@ -37,7 +40,7 @@ app.use(express.json());
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 300,
+  max: Number(process.env.RATE_LIMIT_MAX) || 2000,
   message: { error: "Too many requests" },
   standardHeaders: true,
 });
@@ -64,6 +67,17 @@ app.use("/api/nfc", nfcRouter);
 app.use("/api/me", meRouter);
 app.use("/api/requests", requestsRouter);
 app.use("/api/complaints", complaintsRouter);
+app.use("/api/memories", memoriesRouter);
+app.use("/api/ai", aiRouter);
+app.use("/api/settings", settingsRouter);
+
+// Ensure API always returns JSON on errors (e.g. unhandled rejections in async routes)
+app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error("[API error]", err);
+  if (res.headersSent) return;
+  const message = err instanceof Error ? err.message : String(err);
+  res.status(500).json({ error: message });
+});
 
 const server = http.createServer(app);
 attachRealtimeWebSocket(server);

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Link } from "react-router-dom";
-import { useGuestToken } from "../guestToken";
+import { Link, useNavigate } from "react-router-dom";
+import { useGuestToken, useGuestAuth } from "../guestToken";
 
 const WS_BASE = (() => {
   const u = typeof window !== "undefined" ? window.location : { protocol: "http:", host: "localhost:5173" };
@@ -14,6 +14,9 @@ type ChatMessage = { role: "user" | "assistant"; text: string };
 
 export default function Concierge() {
   const token = useGuestToken();
+  const { setGuestToken } = useGuestAuth();
+  const navigate = useNavigate();
+  const [guestName, setGuestName] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "connecting" | "connected" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [inputMode, setInputMode] = useState<InputMode>("voice");
@@ -48,6 +51,17 @@ export default function Concierge() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, streamingText]);
+
+  // Fetch guest name for welcome text
+  useEffect(() => {
+    if (!token) return;
+    fetch(`/api/me?guest_token=${encodeURIComponent(token)}`)
+      .then((r) => r.json())
+      .then((data: { guest?: { firstName?: string }; conciergeAllowed?: boolean }) => {
+        if (data?.guest?.firstName) setGuestName(data.guest.firstName);
+      })
+      .catch(() => {});
+  }, [token]);
 
   // Poll guest status so we show "Account disabled" soon after check-out without refresh
   useEffect(() => {
@@ -157,6 +171,7 @@ export default function Concierge() {
           error?: string;
           message?: string;
           delta?: string;
+          transcript?: string;
         };
         if (msg.type === "error") {
           const err = msg.error ?? msg.message;
@@ -164,6 +179,10 @@ export default function Concierge() {
           setErrorMsg(text || "Something went wrong.");
           setStatus("error");
           return;
+        }
+        // User spoke (voice input): show transcript in chat
+        if (msg.type === "conversation.item.input_audio_transcription.completed" && typeof msg.transcript === "string" && msg.transcript.trim()) {
+          setMessages((prev) => [...prev, { role: "user", text: msg.transcript.trim() }]);
         }
         if (outputMode === "voice" && msg.type === "response.output_audio.delta" && msg.delta) {
           const ctx = audioContextRef.current;
@@ -188,12 +207,24 @@ export default function Concierge() {
         if (outputMode === "voice" && (msg.type === "response.done" || msg.type === "response.output_audio.done")) {
           nextPlayTimeRef.current = 0;
         }
-        if (outputMode === "text" && msg.type === "response.output_text.delta" && typeof msg.delta === "string") {
+        // Agent response text: show in transcript (text mode)
+        if (msg.type === "response.output_text.delta" && typeof msg.delta === "string") {
           streamingRef.current += msg.delta;
           setStreamingText(streamingRef.current);
         }
-        if (outputMode === "text" && msg.type === "response.output_text.done") {
+        if (msg.type === "response.output_text.done") {
           const final = streamingRef.current;
+          streamingRef.current = "";
+          setStreamingText("");
+          if (final) setMessages((prev) => [...prev, { role: "assistant", text: final }]);
+        }
+        // Agent response audio transcript: show in transcript (voice mode) – streamed then finalized
+        if (msg.type === "response.output_audio_transcript.delta" && typeof msg.delta === "string") {
+          streamingRef.current += msg.delta;
+          setStreamingText(streamingRef.current);
+        }
+        if (msg.type === "response.output_audio_transcript.done" && typeof msg.transcript === "string") {
+          const final = (msg.transcript as string).trim() || streamingRef.current;
           streamingRef.current = "";
           setStreamingText("");
           if (final) setMessages((prev) => [...prev, { role: "assistant", text: final }]);
@@ -229,10 +260,28 @@ export default function Concierge() {
 
   useEffect(() => () => disconnect(), [disconnect]);
 
+  function handleLogOut() {
+    disconnect();
+    setGuestToken(null);
+    navigate("/activate", { replace: true });
+  }
+
   return (
     <div style={{ padding: 24, minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center" }}>
-      <Link to="/" style={{ position: "absolute", top: 16, left: 16, color: "#888", textDecoration: "none" }}>← Back</Link>
+      <div style={{ position: "absolute", top: 16, left: 16, right: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <Link to="/" style={{ color: "#888", textDecoration: "none" }}>← Back</Link>
+        <button
+          type="button"
+          onClick={handleLogOut}
+          style={{ padding: "8px 16px", fontSize: 14, background: "transparent", color: "#888", border: "1px solid #ccc", borderRadius: 8, cursor: "pointer" }}
+        >
+          Log out
+        </button>
+      </div>
       <h1 style={{ marginTop: 0 }}>Nova</h1>
+      {guestName ? (
+        <p style={{ color: "#333", marginTop: 4, marginBottom: 8, fontSize: 18 }}>Welcome, {guestName}</p>
+      ) : null}
       <p style={{ color: "#888", marginBottom: 16 }}>Choose how you want to talk and how you want Nova to respond.</p>
 
       {status === "idle" && (

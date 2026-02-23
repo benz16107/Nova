@@ -6,12 +6,16 @@ export default function Home() {
   const token = useGuestToken();
   const { setGuestToken } = useGuestAuth();
   const [conciergeAllowed, setConciergeAllowed] = useState<boolean | null>(null);
+  const [guestName, setGuestName] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) return;
     fetch(`/api/me?guest_token=${encodeURIComponent(token)}`)
       .then((r) => r.json())
-      .then((data: { conciergeAllowed?: boolean }) => setConciergeAllowed(data.conciergeAllowed ?? false))
+      .then((data: { conciergeAllowed?: boolean; guest?: { firstName?: string } }) => {
+        setConciergeAllowed(data.conciergeAllowed ?? false);
+        if (data?.guest?.firstName) setGuestName(data.guest.firstName);
+      })
       .catch(() => setConciergeAllowed(false));
   }, [token]);
 
@@ -33,7 +37,28 @@ export default function Home() {
 
   return (
     <div style={{ padding: 24, minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+      <button
+        type="button"
+        onClick={() => setGuestToken(null)}
+        style={{
+          position: "absolute",
+          top: 16,
+          right: 16,
+          padding: "8px 16px",
+          fontSize: 14,
+          background: "transparent",
+          color: "#888",
+          border: "1px solid #ccc",
+          borderRadius: 8,
+          cursor: "pointer",
+        }}
+      >
+        Log out
+      </button>
       <h1 style={{ marginTop: 0 }}>Your room</h1>
+      {guestName ? (
+        <p style={{ color: "#333", marginTop: 4, marginBottom: 8, fontSize: 18 }}>Welcome, {guestName}</p>
+      ) : null}
       <p style={{ color: "#888", marginBottom: 32 }}>Ready to talk to Nova?</p>
       <Link
         to="/concierge"
