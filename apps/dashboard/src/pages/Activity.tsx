@@ -27,13 +27,16 @@ function roomSort(a: string, b: string): number {
 }
 
 export default function Activity() {
-  const [roomFilter, setRoomFilter] = useState<string>("");
+  const [openTypeFilter, setOpenTypeFilter] = useState<"all" | "request" | "complaint">("all");
+  const [openReplyFilter, setOpenReplyFilter] = useState<"all" | "replied" | "not_replied">("all");
+  const [openSearchQuery, setOpenSearchQuery] = useState("");
+
+  const [closedTypeFilter, setClosedTypeFilter] = useState<"all" | "request" | "complaint">("all");
+  const [closedReplyFilter, setClosedReplyFilter] = useState<"all" | "replied" | "not_replied">("all");
+  const [closedSearchQuery, setClosedSearchQuery] = useState("");
+
   const [requests, setRequests] = useState<RequestRow[]>([]);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchActive, setSearchActive] = useState(false);
-  const [searchResults, setSearchResults] = useState<RequestRow[] | null>(null);
   const [loading, setLoading] = useState(true);
-  const [searchLoading, setSearchLoading] = useState(false);
   const [aiConfigured, setAiConfigured] = useState<boolean | null>(null);
   const [askQuestion, setAskQuestion] = useState("");
   const [askAnswer, setAskAnswer] = useState<string | null>(null);
@@ -113,35 +116,26 @@ export default function Activity() {
       .finally(() => setAlertsLoading(false));
   }, [aiConfigured]);
 
-  function runSearch(e: React.FormEvent) {
-    e.preventDefault();
-    const q = searchQuery.trim();
-    if (!q) {
-      setSearchActive(false);
-      setSearchResults(null);
-      return;
-    }
-    setSearchActive(true);
-    setSearchLoading(true);
-    const lower = q.toLowerCase();
-    loadRequests()
-      .then((reqs) => {
-        const filtered = reqs.filter((r) => {
-          const desc = (r.description || "").toLowerCase();
-          const guestName = r.guest ? `${r.guest.firstName} ${r.guest.lastName}`.toLowerCase() : "";
-          const room = (r.roomId || "").toLowerCase();
-          return desc.includes(lower) || guestName.includes(lower) || room.includes(lower);
-        });
-        setSearchResults(filtered);
-      })
-      .catch(() => setSearchResults([]))
-      .finally(() => setSearchLoading(false));
-  }
-
-  function clearSearch() {
-    setSearchQuery("");
-    setSearchActive(false);
-    setSearchResults(null);
+  function filterRequests(reqs: RequestRow[], type: string, reply: string, search: string) {
+    return reqs.filter((r) => {
+      // Type filter
+      if (type !== "all" && r.type !== type) return false;
+      // Reply filter
+      if (reply !== "all") {
+        const hasReply = Boolean(r.managerReply?.trim());
+        if (reply === "replied" && !hasReply) return false;
+        if (reply === "not_replied" && hasReply) return false;
+      }
+      // Search filter
+      if (search.trim()) {
+        const q = search.toLowerCase();
+        const desc = (r.description || "").toLowerCase();
+        const guestName = r.guest ? `${r.guest.firstName} ${r.guest.lastName}`.toLowerCase() : "";
+        const room = (r.roomId || "").toLowerCase();
+        if (!desc.includes(q) && !guestName.includes(q) && !room.includes(q)) return false;
+      }
+      return true;
+    });
   }
 
   function runAsk(e: React.FormEvent) {
@@ -175,8 +169,7 @@ export default function Activity() {
       .finally(() => setDigestLoading(false));
   }
 
-  const hasSearch = searchActive && searchResults !== null;
-  const searchTotal = hasSearch ? searchResults!.length : 0;
+  const hasSearch = Boolean(openSearchQuery.trim() || closedSearchQuery.trim());
 
   const checkedInRooms = rooms.filter(
     (room) => room.guests && room.guests.some((g) => g.checkedIn && !g.checkedOut)
@@ -187,15 +180,11 @@ export default function Activity() {
     if (r.status !== "closed") openCountByRoom[r.roomId] = (openCountByRoom[r.roomId] ?? 0) + 1;
   }
 
-  const roomIdsFromRequests = [...new Set(requests.map((r) => r.roomId))];
-  const allRoomIdsBase = [...roomIdsFromRequests].sort(roomSort);
-  const searchRoomIds = hasSearch && searchResults
-    ? [...new Set(searchResults.map((r) => r.roomId))].sort(roomSort)
-    : [];
-  const allRoomIds = hasSearch && searchRoomIds.length > 0 ? searchRoomIds : allRoomIdsBase;
+  const openListFull = requests.filter((r) => r.status !== "closed");
+  const closedListFull = requests.filter((r) => r.status === "closed" && checkedInRoomIds.has(r.roomId));
 
-  const reqsFiltered = roomFilter ? requests.filter((r) => r.roomId === roomFilter) : requests;
-  const searchReqs = hasSearch ? (roomFilter ? searchResults!.filter((r) => r.roomId === roomFilter) : searchResults!) : [];
+  const openList = filterRequests(openListFull, openTypeFilter, openReplyFilter, openSearchQuery);
+  const closedList = filterRequests(closedListFull, closedTypeFilter, closedReplyFilter, closedSearchQuery);
 
   function formatShortDate(createdAt: string) {
     const d = new Date(createdAt);
@@ -307,14 +296,16 @@ export default function Activity() {
         <td className="cell-desc" title={r.description}><span>{r.description}</span></td>
         <td style={{ verticalAlign: "middle" }}>
           <div className="activity-row-actions">
-            <button
-              type="button"
-              className={`btn btn-sm ${hasReply ? "btn-ghost" : "btn-reply-pending"}`}
-              onClick={() => openReplyModal(r)}
-              title={hasReply ? "View or edit reply" : "Reply to guest via Nova"}
-            >
-              {hasReply ? "Replied" : "Reply"}
-            </button>
+            {(!isClosed || hasReply) && (
+              <button
+                type="button"
+                className={`btn btn-sm ${hasReply ? "btn-ghost" : "btn-reply-pending"}`}
+                onClick={() => openReplyModal(r)}
+                title={hasReply ? (isClosed ? "View reply" : "View or edit reply") : "Reply to guest via Nova"}
+              >
+                {hasReply ? "Replied" : "Reply"}
+              </button>
+            )}
             {options?.showReopen && isClosed && (
               <button type="button" className="btn btn-sm" onClick={() => reopenRequest(r.id)}>
                 Re-open
@@ -336,28 +327,39 @@ export default function Activity() {
       {replyModalRequest && (
         <div className="modal-overlay" onClick={() => !replySending && (setReplyModalRequest(null), setReplyError(null))}>
           <div className="modal" style={{ minWidth: 400 }} onClick={(e) => e.stopPropagation()}>
-            <h2 className="modal-title">Reply to guest via Nova</h2>
+            <h2 className="modal-title">
+              {replyModalRequest.status === "closed" ? "View reply" : "Reply to guest via Nova"}
+            </h2>
             <p className="text-muted mb-2" style={{ fontSize: "0.9rem" }}>
               Room {replyModalRequest.roomId} · {replyModalRequest.guest ? `${replyModalRequest.guest.firstName} ${replyModalRequest.guest.lastName}` : "—"} · {replyModalRequest.type}
             </p>
-            <p className="text-muted mb-2" style={{ fontSize: "0.85rem" }}>
-              Your message will be delivered the next time the guest opens Nova.
-            </p>
+            {replyModalRequest.status !== "closed" && (
+              <p className="text-muted mb-2" style={{ fontSize: "0.85rem" }}>
+                Your message will be delivered the next time the guest opens Nova.
+              </p>
+            )}
             <form onSubmit={submitReply}>
               <textarea
                 value={replyMessage}
                 onChange={(e) => setReplyMessage(e.target.value)}
-                placeholder="e.g. We've sent extra towels to your room."
+                placeholder={replyModalRequest.status === "closed" ? "No reply yet" : "e.g. We've sent extra towels to your room."}
                 rows={3}
                 className="input"
+                readOnly={replyModalRequest.status === "closed"}
                 style={{ width: "100%", resize: "vertical", marginBottom: "0.5rem" }}
               />
               {replyError && <p className="text-error mb-2" style={{ fontSize: "0.875rem", marginTop: 0 }}>{replyError}</p>}
               <div className="flex gap-2">
-                <button type="submit" className="btn btn-primary" disabled={!replyMessage.trim() || replySending}>
-                  {replySending ? "Sending…" : "Send reply"}
-                </button>
-                <button type="button" className="btn btn-ghost" onClick={() => { setReplyModalRequest(null); setReplyError(null); }} disabled={replySending}>Cancel</button>
+                {replyModalRequest.status !== "closed" ? (
+                  <>
+                    <button type="submit" className="btn btn-primary" disabled={!replyMessage.trim() || replySending}>
+                      {replySending ? "Sending…" : "Send reply"}
+                    </button>
+                    <button type="button" className="btn btn-ghost" onClick={() => { setReplyModalRequest(null); setReplyError(null); }} disabled={replySending}>Cancel</button>
+                  </>
+                ) : (
+                  <button type="button" className="btn btn-primary" onClick={() => { setReplyModalRequest(null); setReplyError(null); }}>Close</button>
+                )}
               </div>
             </form>
           </div>
@@ -424,14 +426,14 @@ export default function Activity() {
               .map((room) => {
                 const openCount = openCountByRoom[room.roomId] ?? 0;
                 const hasOpen = openCount > 0;
-                const isSelected = roomFilter === room.roomId;
                 return (
                   <button
                     key={room.id}
                     type="button"
-                    onClick={() => setRoomFilter(isSelected ? "" : room.roomId)}
+                    onClick={() => {
+                      setOpenSearchQuery(room.roomId);
+                    }}
                     className={`room-pill ${hasOpen ? "has-open" : ""}`}
-                    style={isSelected ? { borderColor: "var(--accent)", background: "var(--accent-soft)" } : undefined}
                   >
                     <div className="room-num">{room.roomId}</div>
                     {hasOpen && <div className="room-open">{openCount} open request{openCount !== 1 ? "s" : ""}</div>}
@@ -442,98 +444,82 @@ export default function Activity() {
         </div>
       </section>
 
-      <h2 className="section-title mt-3">Activity by room</h2>
-      <form onSubmit={runSearch}>
-        <div className="activity-search-bar">
-          <input
-            type="text"
-            className="input"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search requests…"
-            style={{ minWidth: 260, maxWidth: 360 }}
-          />
-          <button type="submit" className="btn btn-primary" disabled={searchLoading}>
-            {searchLoading ? "Searching…" : "Search"}
-          </button>
-          {searchActive && (
-            <button type="button" className="btn btn-ghost" onClick={clearSearch}>Clear</button>
-          )}
-        </div>
-      </form>
 
-      <div className="activity-filter-row">
-        <span className="section-title" style={{ marginBottom: 0 }}>Room</span>
-        <select
-          className="select"
-          value={roomFilter}
-          onChange={(e) => setRoomFilter(e.target.value)}
-          style={{ width: "auto", minWidth: 120 }}
-        >
-          <option value="">All rooms</option>
-          {allRoomIds.map((rid) => (
-            <option key={rid} value={rid}>Room {rid}</option>
-          ))}
-        </select>
-        {roomFilter && (
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setRoomFilter("")}>Clear room</button>
-        )}
-      </div>
-
-      {loading && !hasSearch ? (
+      {loading ? (
         <div className="activity-empty">Loading…</div>
       ) : (() => {
-        const list = hasSearch ? searchReqs : reqsFiltered;
-        const openList = list.filter((r) => r.status !== "closed");
-        const closedList = list.filter((r) => r.status === "closed" && checkedInRoomIds.has(r.roomId));
-        const title = hasSearch ? `Search results${searchTotal > 0 ? ` (${list.length})` : ""}` : "Requests & complaints";
-        if (openList.length === 0) {
-          return (
-            <>
-              <div className="activity-empty">
-                {hasSearch ? `No requests match${roomFilter ? " for this room" : ""}.` : "No open requests."}
-              </div>
-              {closedList.length > 0 && (
-                <section className="card" style={{ marginTop: "1.25rem" }}>
-                  <div className="activity-card-header">Closed requests ({closedList.length})</div>
-                  <div className="activity-table-wrap">
-                    <table className="activity-table">
-                      <thead>
-                        <tr>
-                          <th>Room</th><th>Type</th><th>Guest</th><th>Time</th><th>Description</th><th style={{ width: "1%" }} />
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {[...closedList].sort((a, b) => new Date((b.closedAt || b.createdAt) as string).getTime() - new Date((a.closedAt || a.createdAt) as string).getTime()).map((r) => renderActivityLogRow(r, { showReopen: true }))}
-                      </tbody>
-                    </table>
-                  </div>
-                </section>
+        const renderControls = (
+          type: "all" | "request" | "complaint",
+          setType: (v: "all" | "request" | "complaint") => void,
+          reply: "all" | "replied" | "not_replied" | any,
+          setReply: (v: "all" | "replied" | "not_replied") => void,
+          search: string,
+          setSearch: (v: string) => void
+        ) => (
+          <div className="activity-header-controls">
+            <div className="activity-search-bar">
+              <input
+                type="text"
+                className="input"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search requests…"
+              />
+              {search && (
+                <button type="button" className="btn btn-ghost btn-xs" onClick={() => setSearch("")}>Clear</button>
               )}
-            </>
-          );
-        }
+            </div>
+
+            <div className="activity-filter-toggles">
+              <div className="toggle-group">
+                <button className={`toggle-btn ${type === "all" ? "active" : ""}`} onClick={() => setType("all")}>All</button>
+                <button className={`toggle-btn ${type === "request" ? "active" : ""}`} onClick={() => setType("request")}>Requests</button>
+                <button className={`toggle-btn ${type === "complaint" ? "active" : ""}`} onClick={() => setType("complaint")}>Complaints</button>
+              </div>
+
+              <div className="toggle-group">
+                <button className={`toggle-btn ${reply === "all" ? "active" : ""}`} onClick={() => setReply("all")}>All</button>
+                <button className={`toggle-btn ${reply === "replied" ? "active" : ""}`} onClick={() => setReply("replied")}>Replied</button>
+                <button className={`toggle-btn ${reply === "not_replied" ? "active" : ""}`} onClick={() => setReply("not_replied")}>Not replied</button>
+              </div>
+            </div>
+          </div>
+        );
+
         return (
-          <>
-            <section className="card">
-              <div className="activity-card-header">{title}</div>
+          <div className="activity-lists-container">
+            <section className="card mb-3">
+              <div className="activity-card-header has-close">
+                <span>Requests & complaints</span>
+                {renderControls(openTypeFilter, setOpenTypeFilter, openReplyFilter, setOpenReplyFilter, openSearchQuery, setOpenSearchQuery)}
+              </div>
               <div className="activity-table-wrap">
-                <table className="activity-table">
-                  <thead>
-                    <tr>
-                      <th>Room</th><th>Type</th><th>Guest</th><th>Time</th><th>Description</th><th style={{ width: "1%" }} />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {openList.map((r) => renderRequestRow(r))}
-                  </tbody>
-                </table>
+                {openList.length === 0 ? (
+                  <div className="activity-empty" style={{ border: "none" }}>{openSearchQuery ? "No results match." : "No open requests."}</div>
+                ) : (
+                  <table className="activity-table">
+                    <thead>
+                      <tr>
+                        <th>Room</th><th>Type</th><th>Guest</th><th>Time</th><th>Description</th><th style={{ width: "1%" }} />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {openList.map((r) => renderRequestRow(r))}
+                    </tbody>
+                  </table>
+                )}
               </div>
             </section>
-            {closedList.length > 0 && (
-              <section className="card" style={{ marginTop: "1.25rem" }}>
-                <div className="activity-card-header">Closed requests ({closedList.length})</div>
-                <div className="activity-table-wrap">
+
+            <section className="card">
+              <div className="activity-card-header has-close">
+                <span>Closed requests</span>
+                {renderControls(closedTypeFilter, setClosedTypeFilter, closedReplyFilter, setClosedReplyFilter, closedSearchQuery, setClosedSearchQuery)}
+              </div>
+              <div className="activity-table-wrap">
+                {closedList.length === 0 ? (
+                  <div className="activity-empty" style={{ border: "none" }}>{closedSearchQuery ? "No results match." : "No closed requests."}</div>
+                ) : (
                   <table className="activity-table">
                     <thead>
                       <tr>
@@ -544,10 +530,10 @@ export default function Activity() {
                       {[...closedList].sort((a, b) => new Date((b.closedAt || b.createdAt) as string).getTime() - new Date((a.closedAt || a.createdAt) as string).getTime()).map((r) => renderActivityLogRow(r, { showReopen: true }))}
                     </tbody>
                   </table>
-                </div>
-              </section>
-            )}
-          </>
+                )}
+              </div>
+            </section>
+          </div>
         );
       })()}
 
@@ -559,7 +545,7 @@ export default function Activity() {
             </button>
           ) : (
             (() => {
-              const activityListRaw = hasSearch ? searchReqs : reqsFiltered;
+              const activityListRaw = requests; // Just use all requests for log
               const activityListSorted = [...activityListRaw].sort(
                 (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
               );

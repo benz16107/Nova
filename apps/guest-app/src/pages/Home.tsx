@@ -7,6 +7,7 @@ export default function Home() {
   const { setGuestToken } = useGuestAuth();
   const [conciergeAllowed, setConciergeAllowed] = useState<boolean | null>(null);
   const [guestName, setGuestName] = useState<string | null>(null);
+  const [roomId, setRoomId] = useState<string | null>(null);
   const [feedbackText, setFeedbackText] = useState("");
   const [feedbackSending, setFeedbackSending] = useState(false);
   const [feedbackSent, setFeedbackSent] = useState(false);
@@ -15,9 +16,10 @@ export default function Home() {
     if (!token) return;
     fetch(`/api/me?guest_token=${encodeURIComponent(token)}`)
       .then((r) => r.json())
-      .then((data: { conciergeAllowed?: boolean; guest?: { firstName?: string } }) => {
+      .then((data: { conciergeAllowed?: boolean; guest?: { firstName?: string; roomId?: string } }) => {
         setConciergeAllowed(data.conciergeAllowed ?? false);
         if (data?.guest?.firstName) setGuestName(data.guest.firstName);
+        if (data?.guest?.roomId) setRoomId(data.guest.roomId);
       })
       .catch(() => setConciergeAllowed(false));
   }, [token]);
@@ -95,7 +97,7 @@ export default function Home() {
       >
         Log out
       </button>
-      <h1 className="g-page-title g-mb-1">Your room</h1>
+      <h1 className="g-page-title g-mb-1">{roomId ? `Room ${roomId}` : "Your room"}</h1>
       {guestName && <p className="g-subtitle g-mb-2" style={{ color: "var(--g-text)", fontSize: "1.125rem" }}>Welcome, {guestName}</p>}
       <p className="g-subtitle g-mb-3">Talk to Nova for help with anything you need.</p>
       <Link to="/concierge" className="g-btn g-btn-primary" style={{ textDecoration: "none" }}>
