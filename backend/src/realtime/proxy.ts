@@ -171,7 +171,7 @@ export function attachRealtimeWebSocket(server: import("http").Server): void {
     let welcomeSent = false;
     openaiWs.on("message", (data: Buffer) => {
       const msg = data.toString();
-      let parsed: { type?: string; [k: string]: unknown };
+      let parsed: { type?: string;[k: string]: unknown };
       try {
         parsed = JSON.parse(msg);
       } catch {
@@ -200,50 +200,57 @@ export function attachRealtimeWebSocket(server: import("http").Server): void {
         }
         openaiWs.send(JSON.stringify({ type: "response.create" }));
       }
-      if (ev.type === "response.done" && requestIdsToMarkShown.length > 0) {
-        const ids = [...requestIdsToMarkShown];
-        requestIdsToMarkShown.length = 0;
-        const now = new Date();
-        prisma.request.updateMany({ where: { id: { in: ids } }, data: { managerReplyShownAt: now } }).catch(() => {});
-      }
-      if (ev.type === "response.function_call_arguments.done") {
-        const args = (ev as { arguments?: string }).arguments;
-        const name = (parsed as { name?: string }).name;
-        const callId = (parsed as { call_id?: string | null }).call_id;
-        if (name && callId != null) {
-          let toolArgs: Record<string, unknown> = {};
-          try {
-            if (args) toolArgs = JSON.parse(args);
-          } catch {}
-          runTool(name, toolArgs, ctx)
-            .then((output) => {
-              openaiWs.send(
-                JSON.stringify({
-                  type: "conversation.item.create",
-                  item: {
-                    type: "function_call_output",
-                    call_id: callId,
-                    output,
-                  },
-                }),
-              );
-              // Request the model to generate a response (voice or text) so the guest hears/sees confirmation
-              openaiWs.send(JSON.stringify({ type: "response.create" }));
-            })
-            .catch((err) => {
-              openaiWs.send(
-                JSON.stringify({
-                  type: "conversation.item.create",
-                  item: {
-                    type: "function_call_output",
-                    call_id: callId,
-                    output: String(err),
-                  },
-                }),
-              );
-              openaiWs.send(JSON.stringify({ type: "response.create" }));
-            });
-          return;
+      if (ev.type === "response.done") {
+        const responseData = (parsed as any).response;
+        // Mark pending manager replies as shown
+        if (requestIdsToMarkShown.length > 0) {
+          const ids = [...requestIdsToMarkShown];
+          requestIdsToMarkShown.length = 0;
+          const now = new Date();
+          prisma.request.updateMany({ where: { id: { in: ids } }, data: { managerReplyShownAt: now } }).catch(() => { });
+        }
+
+        // Execute function calls
+        if (responseData && responseData.output) {
+          for (const item of responseData.output) {
+            if (item.type === "function_call") {
+              const { name, arguments: args, call_id: callId } = item;
+              let toolArgs: Record<string, unknown> = {};
+              try {
+                if (args) toolArgs = JSON.parse(args);
+              } catch { }
+
+              console.log(`[Realtime] Tool call: ${name}`, toolArgs);
+              runTool(name!, toolArgs, ctx)
+                .then((output) => {
+                  openaiWs.send(
+                    JSON.stringify({
+                      type: "conversation.item.create",
+                      item: {
+                        type: "function_call_output",
+                        call_id: callId,
+                        output,
+                      },
+                    }),
+                  );
+                  // Request the model to generate a response (voice or text) so the guest hears/sees confirmation
+                  openaiWs.send(JSON.stringify({ type: "response.create" }));
+                })
+                .catch((err) => {
+                  openaiWs.send(
+                    JSON.stringify({
+                      type: "conversation.item.create",
+                      item: {
+                        type: "function_call_output",
+                        call_id: callId,
+                        output: String(err),
+                      },
+                    }),
+                  );
+                  openaiWs.send(JSON.stringify({ type: "response.create" }));
+                });
+            }
+          }
         }
       }
       clientWs.send(msg);
