@@ -32,49 +32,27 @@ function ChevronIcon({ expanded }: { expanded: boolean }) {
   );
 }
 
-function FeedbackCollapsibleCard({ f }: { f: FeedbackItem }) {
-  const [expanded, setExpanded] = useState(false);
+function FeedbackItemView({ f }: { f: FeedbackItem }) {
   const dateStr = new Date(f.createdAt).toLocaleString([], { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
   const guestName = f.guest ? `${f.guest.firstName} ${f.guest.lastName}` : "—";
 
   return (
-    <div
-      className="card feedback-collapsible-card"
-      style={{ marginBottom: "0.75rem", cursor: "pointer", transition: "border-color 0.2s, box-shadow 0.2s" }}
-      onClick={() => setExpanded(!expanded)}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = "var(--accent)";
-        e.currentTarget.style.boxShadow = "var(--shadow-md)";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = "var(--border)";
-        e.currentTarget.style.boxShadow = "var(--shadow)";
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "1rem 1.25rem" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-          <div style={{ background: "var(--surface-hover)", padding: "0.5rem 0.75rem", borderRadius: "var(--radius-sm)", fontWeight: 600, border: "1px solid var(--border)" }}>
-            Room {f.roomId}
-          </div>
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            <span style={{ fontWeight: 600, color: "var(--text)" }}>{guestName}</span>
-            <span className="text-muted" style={{ fontSize: "var(--text-xs)" }}>{dateStr}</span>
-          </div>
+    <div style={{ padding: "1.25rem" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "1rem", marginBottom: "0.75rem" }}>
+        <div style={{ background: "var(--surface)", padding: "0.35rem 0.6rem", borderRadius: "var(--radius-sm)", fontWeight: 600, border: "1px solid var(--border)", fontSize: "var(--text-sm)" }}>
+          Room {f.roomId}
         </div>
-        <div>
-          <ChevronIcon expanded={expanded} />
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <span style={{ fontWeight: 600, color: "var(--text)" }}>{guestName}</span>
+          <span className="text-muted" style={{ fontSize: "var(--text-xs)" }}>{dateStr}</span>
         </div>
       </div>
-      {expanded && (
-        <div style={{ padding: "0 1.25rem 1.25rem 1.25rem", borderTop: "1px solid var(--border)", paddingTop: "1.25rem", backgroundColor: "var(--surface-hover)", borderBottomLeftRadius: "var(--radius)", borderBottomRightRadius: "var(--radius)" }}>
-          <p style={{ margin: 0, whiteSpace: "pre-wrap", color: "var(--text)", lineHeight: "var(--leading-normal)", fontSize: "var(--text-base)" }}>
-            {f.content}
-          </p>
-          {f.source && (
-            <div style={{ marginTop: "1rem" }}>
-              <span className="badge badge-muted">Source: {f.source}</span>
-            </div>
-          )}
+      <p style={{ margin: 0, whiteSpace: "pre-wrap", color: "var(--text)", lineHeight: "var(--leading-normal)", fontSize: "var(--text-base)" }}>
+        {f.content}
+      </p>
+      {f.source && (
+        <div style={{ marginTop: "0.75rem" }}>
+          <span className="badge badge-muted">Source: {f.source}</span>
         </div>
       )}
     </div>
@@ -84,7 +62,7 @@ function FeedbackCollapsibleCard({ f }: { f: FeedbackItem }) {
 export default function Feedback() {
   const [list, setList] = useState<FeedbackItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showAllFeedbacks, setShowAllFeedbacks] = useState(false);
+  const [allFeedbackExpanded, setAllFeedbackExpanded] = useState(false);
 
   const [aiData, setAiData] = useState<AIDashboardData | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
@@ -126,7 +104,7 @@ export default function Feedback() {
     return () => clearInterval(interval);
   }, [loadFeedback, loadAIDashboard]);
 
-  const displayedList = showAllFeedbacks ? list : list.slice(0, 5);
+
 
   return (
     <div>
@@ -222,22 +200,41 @@ export default function Feedback() {
           </div>
         </div>
       ) : (
-        <div className="feedback-cards-container">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-            <h3 className="section-title" style={{ margin: 0, color: "var(--text)" }}>Recent Feedback Records</h3>
-            <span className="badge badge-muted">{list.length} total</span>
+        <div
+          className="card"
+          style={{
+            marginBottom: "1rem",
+            cursor: "pointer",
+            transition: "border-color 0.2s, box-shadow 0.2s",
+            overflow: "hidden"
+          }}
+          onClick={() => setAllFeedbackExpanded(!allFeedbackExpanded)}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = "var(--accent)";
+            e.currentTarget.style.boxShadow = "var(--shadow-md)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderColor = "var(--border)";
+            e.currentTarget.style.boxShadow = "var(--shadow)";
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "1.25rem" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+              <h3 className="section-title" style={{ margin: 0, color: "var(--text)" }}>Recent Feedback Records</h3>
+              <span className="badge badge-muted">{list.length} records</span>
+            </div>
+            <div>
+              <ChevronIcon expanded={allFeedbackExpanded} />
+            </div>
           </div>
-          {displayedList.map((f) => (
-            <FeedbackCollapsibleCard key={f.id} f={f} />
-          ))}
-          {list.length > 5 && (
-            <button
-              className="btn btn-ghost"
-              style={{ width: "100%", marginTop: "0.5rem" }}
-              onClick={() => setShowAllFeedbacks(!showAllFeedbacks)}
-            >
-              {showAllFeedbacks ? "Show less" : `View all ${list.length} feedback records`}
-            </button>
+          {allFeedbackExpanded && (
+            <div style={{ borderTop: "1px solid var(--border)", background: "var(--surface-hover)" }}>
+              {list.map((f, i) => (
+                <div key={f.id} style={{ borderBottom: i < list.length - 1 ? "1px solid var(--border)" : "none" }}>
+                  <FeedbackItemView f={f} />
+                </div>
+              ))}
+            </div>
           )}
         </div>
       )}
