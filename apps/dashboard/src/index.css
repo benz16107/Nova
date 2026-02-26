@@ -2,6 +2,7 @@
 :root {
   --text: #1a1a1a;
   --text-muted: #64748b;
+  --bg: #f1f5f9;
   --surface: #ffffff;
   --surface-hover: #f8fafc;
   --border: #e2e8f0;
@@ -26,6 +27,22 @@
   --leading-normal: 1.5;
 }
 
+.dark {
+  --text: #f1f5f9;
+  --text-muted: #94a3b8;
+  --bg: #0b1120;
+  --surface: #1e293b;
+  --surface-hover: #334155;
+  --border: #475569;
+  --accent: #14b8a6;
+  --accent-hover: #2dd4bf;
+  --accent-soft: #042f2e;
+  --error: #ef4444;
+  --error-soft: #7f1d1d;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -39,10 +56,11 @@ body {
   font-size: var(--text-base);
   font-weight: 400;
   line-height: var(--leading-normal);
-  background: #f1f5f9;
+  background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 #root {
@@ -333,8 +351,6 @@ body {
   margin: 0 0 0.25rem 0;
   font-size: var(--text-sm);
 }
-
-.add-room-field {}
 
 .add-room-label {
   display: block;
