@@ -15,6 +15,16 @@
   --radius-sm: 8px;
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06);
+
+  /* AI Dashboard specific */
+  --ai-header-start: #f0fdfa;
+  --ai-header-end: #ccfbf1;
+  --ai-praise-text: #059669;
+  --ai-improve-text: #dc2626;
+  --ai-insight-bg: #fefce8;
+  --ai-insight-border: #fef08a;
+  --ai-insight-text: #854d0e;
+
   /* Typography */
   --font-sans: "Source Sans 3", system-ui, -apple-system, sans-serif;
   --text-xs: 0.75rem;
@@ -28,19 +38,28 @@
 }
 
 .dark {
-  --text: #f1f5f9;
-  --text-muted: #94a3b8;
-  --bg: #0b1120;
-  --surface: #1e293b;
-  --surface-hover: #334155;
-  --border: #475569;
+  --text: #f3f4f6;
+  --text-muted: #9ca3af;
+  --bg: #050505;
+  --surface: #121212;
+  --surface-hover: #1f1f1f;
+  --border: #333333;
   --accent: #14b8a6;
   --accent-hover: #2dd4bf;
   --accent-soft: #042f2e;
   --error: #ef4444;
-  --error-soft: #7f1d1d;
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.3);
+  --error-soft: #450a0a;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+
+  /* AI Dashboard overrides */
+  --ai-header-start: #022c22;
+  --ai-header-end: #134e4a;
+  --ai-praise-text: #34d399;
+  --ai-improve-text: #f87171;
+  --ai-insight-bg: #422006;
+  --ai-insight-border: #713f12;
+  --ai-insight-text: #fef08a;
 }
 
 * {
@@ -1150,7 +1169,7 @@ body {
 
 .ai-dashboard-header {
   padding: 1.25rem 1.5rem;
-  background: linear-gradient(135deg, #f0fdfa 0%, #ccfbf1 100%);
+  background: linear-gradient(135deg, var(--ai-header-start) 0%, var(--ai-header-end) 100%);
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
@@ -1222,11 +1241,11 @@ body {
 }
 
 .ai-list-title.praise {
-  color: #059669;
+  color: var(--ai-praise-text);
 }
 
 .ai-list-title.improvements {
-  color: #dc2626;
+  color: var(--ai-improve-text);
 }
 
 .ai-list {
@@ -1245,12 +1264,12 @@ body {
 }
 
 .ai-insights-card {
-  background: #fefce8;
-  border: 1px solid #fef08a;
+  background: var(--ai-insight-bg);
+  border: 1px solid var(--ai-insight-border);
   border-radius: var(--radius-sm);
   padding: 1.25rem;
   font-size: var(--text-sm);
-  color: #854d0e;
+  color: var(--ai-insight-text);
 }
 
 .ai-insights-title {
