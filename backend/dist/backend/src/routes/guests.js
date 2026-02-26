@@ -54,7 +54,7 @@ exports.guestsRouter.get("/:id/memories", async (req, res) => {
         res.status(500).json({ error: String(e) });
     }
 });
-/** GET /api/guests/:id/check-out-summary — guest + requests + memories for pre-check-out confirmation. */
+/** GET /api/guests/:id/check-out-summary — all guests in the room + requests + memories for pre-check-out. (Feedback is collected after checkout only.) */
 exports.guestsRouter.get("/:id/check-out-summary", async (req, res) => {
     try {
         const guest = await db_js_1.prisma.guest.findUnique({
@@ -63,23 +63,43 @@ exports.guestsRouter.get("/:id/check-out-summary", async (req, res) => {
         });
         if (!guest)
             return res.status(404).json({ error: "Guest not found" });
-        const [memories, requests] = await Promise.all([
-            (0, backboard_js_1.getMemoriesForGuest)(guest.id),
-            db_js_1.prisma.request.findMany({ where: { guestId: guest.id }, orderBy: { createdAt: "desc" } }),
-        ]);
-        res.json({
-            guest: {
-                id: guest.id,
-                firstName: guest.firstName,
-                lastName: guest.lastName,
-                roomId: guest.room.roomId,
-                checkedInAt: guest.checkedInAt,
-            },
-            memories,
-            requests,
+        const room = guest.room;
+        if (!room)
+            return res.status(500).json({ error: "Guest has no room" });
+        const roomId = room.roomId;
+        const roomGuests = await db_js_1.prisma.guest.findMany({
+            where: { roomId: room.id },
+            include: { room: true },
+            orderBy: { createdAt: "asc" },
         });
+        const guestsData = await Promise.all(roomGuests.map(async (g) => {
+            const [memories, requests] = await Promise.all([
+                (0, backboard_js_1.getMemoriesForGuest)(g.id).catch(() => []),
+                db_js_1.prisma.request.findMany({ where: { guestId: g.id }, orderBy: { createdAt: "desc" } }),
+            ]);
+            return {
+                guest: {
+                    id: g.id,
+                    firstName: g.firstName,
+                    lastName: g.lastName,
+                    roomId: g.room.roomId,
+                    checkedInAt: g.checkedInAt,
+                },
+                memories: Array.isArray(memories) ? memories : [],
+                requests: requests.map((r) => ({
+                    id: r.id,
+                    type: r.type,
+                    description: r.description,
+                    status: r.status ?? "open",
+                    closedAt: r.closedAt,
+                    createdAt: r.createdAt,
+                })),
+            };
+        }));
+        res.json({ roomId, guests: guestsData });
     }
     catch (e) {
+        console.error("[GET /api/guests/:id/check-out-summary]", e);
         res.status(500).json({ error: String(e) });
     }
 });

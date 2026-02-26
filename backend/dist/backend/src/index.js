@@ -36,6 +36,7 @@ const auth_js_1 = require("./routes/auth.js");
 const memories_js_1 = require("./routes/memories.js");
 const ai_js_1 = require("./routes/ai.js");
 const settings_js_1 = require("./routes/settings.js");
+const feedback_js_1 = require("./routes/feedback.js");
 const proxy_js_1 = require("./realtime/proxy.js");
 const backboard_js_1 = require("./backboard.js");
 const nova_config_js_1 = require("../../nova-config.js");
@@ -71,6 +72,7 @@ app.use("/api/complaints", requests_js_1.complaintsRouter);
 app.use("/api/memories", memories_js_1.memoriesRouter);
 app.use("/api/ai", ai_js_1.aiRouter);
 app.use("/api/settings", settings_js_1.settingsRouter);
+app.use("/api/feedback", feedback_js_1.feedbackRouter);
 // Ensure API always returns JSON on errors (e.g. unhandled rejections in async routes)
 app.use((err, _req, res, _next) => {
     console.error("[API error]", err);

@@ -1,1 +1,1 @@
-{"root":["./src/app.tsx","./src/auth.tsx","./src/main.tsx","./src/pages/guests.tsx","./src/pages/layout.tsx","./src/pages/login.tsx","./src/pages/requests.tsx"],"version":"5.9.3"}
+{"root":["./src/app.tsx","./src/errorboundary.tsx","./src/auth.tsx","./src/main.tsx","./src/config/hotel.ts","./src/context/settingscontext.tsx","./src/pages/activity.tsx","./src/pages/feedback.tsx","./src/pages/guests.tsx","./src/pages/layout.tsx","./src/pages/login.tsx","./src/pages/settings.tsx"],"version":"5.9.3"}

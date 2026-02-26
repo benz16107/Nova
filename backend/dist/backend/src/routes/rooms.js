@@ -52,9 +52,11 @@ exports.roomsRouter.delete("/:id", async (req, res) => {
         if (!room)
             return res.status(404).json({ error: "Room not found" });
         const guests = await db_js_1.prisma.guest.findMany({ where: { roomId: room.id }, select: { id: true } });
-        for (const g of guests) {
-            await db_js_1.prisma.request.deleteMany({ where: { guestId: g.id } });
-            await db_js_1.prisma.conciergeSession.deleteMany({ where: { guestId: g.id } });
+        const guestIds = guests.map((g) => g.id);
+        if (guestIds.length > 0) {
+            await db_js_1.prisma.feedback.deleteMany({ where: { guestId: { in: guestIds } } });
+            await db_js_1.prisma.request.deleteMany({ where: { guestId: { in: guestIds } } });
+            await db_js_1.prisma.conciergeSession.deleteMany({ where: { guestId: { in: guestIds } } });
         }
         await db_js_1.prisma.guest.deleteMany({ where: { roomId: room.id } });
         await db_js_1.prisma.room.delete({ where: { id: room.id } });
