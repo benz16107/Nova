@@ -44,6 +44,19 @@ const TOOLS = [
             required: ["item"],
         },
     },
+    {
+        type: "function",
+        name: "submit_feedback",
+        description: "Record checkout feedback from the guest (e.g. how was their stay, any last comments). Use when the guest wants to leave feedback, especially at checkout. After calling, thank them and confirm it was recorded.",
+        parameters: {
+            type: "object",
+            properties: {
+                content: { type: "string", description: "The guest's feedback text" },
+                source: { type: "string", enum: ["text", "voice"], description: "How the guest gave the feedback" },
+            },
+            required: ["content"],
+        },
+    },
 ];
 function attachRealtimeWebSocket(server) {
     const wss = new ws_1.default.Server({ noServer: true });
@@ -86,7 +99,22 @@ function attachRealtimeWebSocket(server) {
         await (0, backboard_js_1.ensureThreadForGuest)(guest.id);
         const memories = await (0, backboard_js_1.getMemoriesForGuest)(guest.id);
         const memoryText = (0, backboard_js_1.memorySummary)(memories);
-        const contextLine = `Current guest: ${guest.firstName}, Room ${guest.room.roomId}. ${memoryText}`;
+        const contextLine = `Current guest (the person you are speaking with): ${guest.firstName}, Room ${guest.room.roomId}. Only use memories and preferences for this guest—do not attribute requests or preferences from other people in the room to ${guest.firstName}. ${memoryText}`;
+        // Pending manager replies: deliver first thing when guest opens Nova, then mark as shown
+        const pendingReplies = await db_js_1.prisma.request.findMany({
+            where: { guestId: guest.id, managerReply: { not: null }, managerReplyShownAt: null },
+            select: { id: true, managerReply: true, type: true },
+        });
+        const requestIdsToMarkShown = pendingReplies.map((r) => r.id);
+        // Build phrase per reply: "The managers have left a message for your last request: \"...\"" or "...complaint: \"...\""
+        const managerPhrases = pendingReplies
+            .filter((r) => r.managerReply != null && String(r.managerReply).trim() !== "")
+            .map((r) => {
+            const label = r.type === "complaint" ? "complaint" : "request";
+            const msg = String(r.managerReply).trim();
+            return `The managers have left a message for your last ${label}: "${msg}"`;
+        });
+        const managerMessageText = managerPhrases.join(" ");
         const instructionsWithWelcome = nova_config_js_1.WELCOME_MESSAGE.trim() === ""
             ? nova_config_js_1.INSTRUCTIONS + "\n\n" + contextLine
             : nova_config_js_1.INSTRUCTIONS + "\n\nWhen the conversation starts, say this welcome out loud first, then wait for the guest: \"" + nova_config_js_1.WELCOME_MESSAGE.trim() + "\"\n\n" + contextLine;
@@ -140,46 +168,71 @@ function attachRealtimeWebSocket(server) {
                 return;
             }
             const ev = parsed;
-            if (ev.type === "session.updated" && nova_config_js_1.WELCOME_MESSAGE.trim() !== "" && !welcomeSent) {
+            const shouldTriggerFirstResponse = nova_config_js_1.WELCOME_MESSAGE.trim() !== "" || managerMessageText.length > 0;
+            if (ev.type === "session.updated" && shouldTriggerFirstResponse && !welcomeSent) {
                 welcomeSent = true;
+                // If there's a manager message, inject it as a user turn so the model is explicitly asked to deliver it
+                if (managerMessageText.length > 0) {
+                    const deliverInstruction = "Say the following to the guest exactly as written (it tells them the managers replied to their request or complaint), then give your usual welcome: " +
+                        JSON.stringify(managerPhrases.join(" "));
+                    openaiWs.send(JSON.stringify({
+                        type: "conversation.item.create",
+                        item: {
+                            type: "message",
+                            role: "user",
+                            content: [{ type: "input_text", text: deliverInstruction }],
+                        },
+                    }));
+                }
                 openaiWs.send(JSON.stringify({ type: "response.create" }));
             }
-            if (ev.type === "response.function_call_arguments.done") {
-                const args = ev.arguments;
-                const name = parsed.name;
-                const callId = parsed.call_id;
-                if (name && callId != null) {
-                    let toolArgs = {};
-                    try {
-                        if (args)
-                            toolArgs = JSON.parse(args);
+            if (ev.type === "response.done") {
+                const responseData = parsed.response;
+                // Mark pending manager replies as shown
+                if (requestIdsToMarkShown.length > 0) {
+                    const ids = [...requestIdsToMarkShown];
+                    requestIdsToMarkShown.length = 0;
+                    const now = new Date();
+                    db_js_1.prisma.request.updateMany({ where: { id: { in: ids } }, data: { managerReplyShownAt: now } }).catch(() => { });
+                }
+                // Execute function calls
+                if (responseData && responseData.output) {
+                    for (const item of responseData.output) {
+                        if (item.type === "function_call") {
+                            const { name, arguments: args, call_id: callId } = item;
+                            let toolArgs = {};
+                            try {
+                                if (args)
+                                    toolArgs = JSON.parse(args);
+                            }
+                            catch { }
+                            console.log(`[Realtime] Tool call: ${name}`, toolArgs);
+                            (0, tools_js_1.runTool)(name, toolArgs, ctx)
+                                .then((output) => {
+                                openaiWs.send(JSON.stringify({
+                                    type: "conversation.item.create",
+                                    item: {
+                                        type: "function_call_output",
+                                        call_id: callId,
+                                        output,
+                                    },
+                                }));
+                                // Request the model to generate a response (voice or text) so the guest hears/sees confirmation
+                                openaiWs.send(JSON.stringify({ type: "response.create" }));
+                            })
+                                .catch((err) => {
+                                openaiWs.send(JSON.stringify({
+                                    type: "conversation.item.create",
+                                    item: {
+                                        type: "function_call_output",
+                                        call_id: callId,
+                                        output: String(err),
+                                    },
+                                }));
+                                openaiWs.send(JSON.stringify({ type: "response.create" }));
+                            });
+                        }
                     }
-                    catch { }
-                    (0, tools_js_1.runTool)(name, toolArgs, ctx)
-                        .then((output) => {
-                        openaiWs.send(JSON.stringify({
-                            type: "conversation.item.create",
-                            item: {
-                                type: "function_call_output",
-                                call_id: callId,
-                                output,
-                            },
-                        }));
-                        // Request the model to generate a response (voice or text) so the guest hears/sees confirmation
-                        openaiWs.send(JSON.stringify({ type: "response.create" }));
-                    })
-                        .catch((err) => {
-                        openaiWs.send(JSON.stringify({
-                            type: "conversation.item.create",
-                            item: {
-                                type: "function_call_output",
-                                call_id: callId,
-                                output: String(err),
-                            },
-                        }));
-                        openaiWs.send(JSON.stringify({ type: "response.create" }));
-                    });
-                    return;
                 }
             }
             clientWs.send(msg);

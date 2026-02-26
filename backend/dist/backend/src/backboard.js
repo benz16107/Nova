@@ -11,6 +11,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ensureThreadForGuest = ensureThreadForGuest;
 exports.getAllMemoriesRaw = getAllMemoriesRaw;
 exports.getMemoriesForGuest = getMemoriesForGuest;
+exports.getMemoriesForRoom = getMemoriesForRoom;
 exports.addMemory = addMemory;
 exports.memorySummary = memorySummary;
 exports.checkBackboardConnection = checkBackboardConnection;
@@ -205,6 +206,16 @@ async function getAllMemoriesRaw() {
 async function getMemoriesForGuest(guestId) {
     const all = await getAllMemoriesRaw();
     return all.filter((m) => m.guest_id === guestId).map((m) => m.content);
+}
+/**
+ * Get memories for all guests that stayed in this room (room_id in metadata).
+ * Returns content plus guest_id for attribution.
+ */
+async function getMemoriesForRoom(roomId) {
+    const all = await getAllMemoriesRaw();
+    return all
+        .filter((m) => m.room_id === String(roomId))
+        .map((m) => ({ guestId: m.guest_id, content: m.content }));
 }
 /** Add a memory for this guest only (metadata isolates it to this stay). */
 async function addMemory(guestId, roomId, content) {

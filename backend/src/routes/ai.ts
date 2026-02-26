@@ -254,3 +254,86 @@ aiRouter.post("/summarize-guest", async (req, res) => {
     res.status(500).json({ error: String(e) });
   }
 });
+
+/** GET /api/ai/feedback-dashboard — Generate an AI summary of all collected feedback and memory threads */
+aiRouter.get("/feedback-dashboard", async (req, res) => {
+  try {
+    if (!openai) {
+      return res.status(503).json({ error: "AI is not configured. Set OPENAI_API_KEY." });
+    }
+
+    // 1. Fetch formal feedback
+    const feedbackList = await prisma.feedback.findMany({
+      include: { guest: { select: { firstName: true, lastName: true } } },
+      orderBy: { createdAt: "desc" },
+    });
+
+    // 2. Fetch Backboard memory threads
+    let allMemories: { guest_id: string; room_id: string; content: string }[] = [];
+    const backboard = await import("../backboard.js").catch(() => null);
+    if (backboard) {
+      try {
+        allMemories = await backboard.getAllMemoriesRaw();
+      } catch (err) {
+        console.error("[AI feedback-dashboard] failed to fetch memories:", err);
+      }
+    }
+
+    if (feedbackList.length === 0 && allMemories.length === 0) {
+      return res.json({
+        overall_vibe: "No feedback or memory data collected yet.",
+        top_praise: [],
+        improvements: [],
+        insights: "Start collecting feedback from guests to generate insights.",
+      });
+    }
+
+    // Build context payload
+    const dataLines: string[] = [];
+    feedbackList.slice(0, 100).forEach((f) => {
+      const g = f.guest ? `${f.guest.firstName} ${f.guest.lastName}` : "Unknown";
+      dataLines.push(`[Formal Feedback | Room ${f.roomId} | ${g}]: ${f.content}`);
+    });
+
+    allMemories.forEach((m) => {
+      dataLines.push(`[Backboard Memory Thread | Room ${m.room_id}]: ${m.content}`);
+    });
+
+    // Construct JSON shape constraint
+    const prompt = `You are an AI assistant for a hotel manager. You are analyzing all formal guest checkout feedback and real-time stay-memory threads (Backboard memories). 
+Provide a structured JSON response summarizing the guest sentiment and feedback.
+Respond EXACTLY in this JSON format (no markdown code blocks, just raw JSON):
+{
+  "overall_vibe": "A 2-3 sentence summary of the general sentiment and experience.",
+  "top_praise": ["Praise point 1", "Praise point 2", "Praise point 3"],
+  "improvements": ["Area for improvement 1", "Area for improvement 2"],
+  "insights": "One interesting or actionable overarching insight from the data."
+}`;
+
+    const completion = await openai.chat.completions.create({
+      model: MODEL,
+      messages: [
+        { role: "system", content: prompt },
+        {
+          role: "user",
+          content: `Here is the recent hotel feedback data:\n\n${dataLines.join("\n")}`,
+        },
+      ],
+      max_tokens: 800,
+      response_format: { type: "json_object" },
+    });
+
+    const answerStr = completion.choices[0]?.message?.content?.trim() || "{}";
+    let parsed: any;
+    try {
+      parsed = JSON.parse(answerStr);
+    } catch {
+      parsed = { error: "Failed to parse AI response" };
+    }
+
+    res.json(parsed);
+  } catch (e) {
+    console.error("[AI feedback-dashboard]", e);
+    res.status(500).json({ error: String(e) });
+  }
+});
