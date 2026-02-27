@@ -30,6 +30,27 @@ pio run
 pio run -t upload
 ```
 
+## Remote room control from a separate terminal
+
+Once flashed and powered, the reader can run standalone (USB power adapter is enough) and poll the backend for room assignment.
+
+In a separate terminal:
+
+```bash
+cd backend
+npm run reader:cli
+```
+
+Useful commands inside the CLI:
+
+- `show` – show current reader room assignment
+- `set 205` – set current reader to room 205
+- `reader lobby-1` – switch active reader id in CLI
+- `list` – list all reader assignments
+- `clear` – clear reader override
+
+By default, ESP32 uses `reader-1`. You can change firmware reader id by defining `READER_ID` in `config.h` or build flags.
+
 ## Payload
 
 Each read sends:
