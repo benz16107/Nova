@@ -15,9 +15,9 @@ flowchart LR
     end
 
     %% Guest Timeline
-    subgraph GST["Guest Timeline (branches from Manager Step 3)"]
+    subgraph GST["Guest Timeline"]
         direction LR
-        G1([1. Guest arrives and scans\nregistered room card])
+        G1([1. Registered room card is scanned])
         G2([2. Nova in guest app is enabled])
         G3([3. Guest makes requests/complaints\nand receives staff replies])
         G4([4. After checkout, app is disabled\nand guest can leave final feedback])
@@ -38,12 +38,23 @@ flowchart LR
     M5 --> G4
     G4 --> M6
 
+    %% Legend
+    subgraph LEG[Component Legend]
+        direction TB
+        LM[Manager component]
+        LG[Guest component]
+        LH[Hardware component]
+    end
+
     %% Visual coding by component
     classDef manager fill:#E0F2FE,stroke:#0284C7,stroke-width:2px,color:#0C4A6E;
     classDef guest fill:#DCFCE7,stroke:#16A34A,stroke-width:2px,color:#14532D;
     classDef hardware fill:#FEF3C7,stroke:#D97706,stroke-width:2px,color:#78350F;
 
     class M1,M2,M3,M4,M5,M6 manager;
-    class G1,G2,G3,G4 guest;
-    class HREG hardware;
+    class G2,G3,G4 guest;
+    class HREG,G1 hardware;
+    class LM manager;
+    class LG guest;
+    class LH hardware;
 ```
