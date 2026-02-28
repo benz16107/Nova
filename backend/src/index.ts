@@ -34,6 +34,7 @@ import { feedbackRouter } from "./routes/feedback.js";
 import { attachRealtimeWebSocket } from "./realtime/proxy.js";
 import { checkBackboardConnection } from "./backboard.js";
 import { BACKBOARD_MEMORY_ENABLED } from "../../nova-config.js";
+import { resetAllRoomUnlocks } from "./roomUnlock.js";
 
 const app = express();
 app.use(cors());
@@ -49,7 +50,7 @@ app.use("/api", apiLimiter);
 
 const nfcLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 30,
+  max: Number(process.env.NFC_RATE_LIMIT_MAX) || 180,
   message: { error: "Too many NFC reads" },
 });
 app.use("/api/nfc", nfcLimiter);
@@ -81,13 +82,14 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
   res.status(500).json({ error: message });
 });
 
+
 const server = http.createServer(app);
 attachRealtimeWebSocket(server);
 
 const PORT = Number(process.env.PORT) || 3000;
 const MAX_PORT_ATTEMPTS = 5;
 
-function tryListen(port: number): void {
+async function tryListen(port: number): Promise<void> {
   if (port > PORT + MAX_PORT_ATTEMPTS - 1) {
     console.error(`Port ${PORT} to ${PORT + MAX_PORT_ATTEMPTS - 1} are in use. Free one with: kill $(lsof -t -i:${PORT})`);
     process.exit(1);
@@ -102,8 +104,11 @@ function tryListen(port: number): void {
     }
   };
   server.once("error", onError);
-  server.listen(port, () => {
+  server.listen(port, async () => {
     server.off("error", onError);
+    // Reset all room unlocks on backend boot
+    await resetAllRoomUnlocks();
+    console.log("[Startup] All room unlocks reset. No card will open any door until check-in and registration.");
     console.log(`Server listening on http://localhost:${port}`);
     if (port !== PORT) console.log(`(Port ${PORT} was in use; using ${port}. Set PORT=${port} in .env or free 3000 with: kill $(lsof -t -i:3000))`);
     console.log(`OPENAI_API_KEY loaded: ${process.env.OPENAI_API_KEY ? "yes" : "no"}`);

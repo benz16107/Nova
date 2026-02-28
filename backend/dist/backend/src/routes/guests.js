@@ -4,6 +4,7 @@ exports.guestsRouter = void 0;
 const express_1 = require("express");
 const db_js_1 = require("../db.js");
 const backboard_js_1 = require("../backboard.js");
+const roomUnlock_js_1 = require("../roomUnlock.js");
 exports.guestsRouter = (0, express_1.Router)();
 exports.guestsRouter.get("/", async (req, res) => {
     try {
@@ -210,6 +211,7 @@ exports.guestsRouter.post("/:id/check-in", async (req, res) => {
             where: { roomId: guest.roomId },
             data: { checkedIn: true, checkedInAt: now },
         });
+        await (0, roomUnlock_js_1.lockRoom)(guest.room.roomId);
         res.json({ ok: true, checkedIn: true });
     }
     catch (e) {
@@ -228,6 +230,7 @@ exports.guestsRouter.post("/:id/undo-check-in", async (req, res) => {
             where: { roomId: guest.roomId },
             data: { checkedIn: false, checkedInAt: null },
         });
+        await (0, roomUnlock_js_1.lockRoom)(guest.room.roomId);
         res.json({ ok: true, checkedIn: false });
     }
     catch (e) {
@@ -247,6 +250,7 @@ exports.guestsRouter.post("/:id/check-out", async (req, res) => {
             where: { roomId: guest.roomId },
             data: { checkedOut: true, checkedOutAt: now, archived: true, archivedVia: "check_out" },
         });
+        await (0, roomUnlock_js_1.lockRoom)(guest.room.roomId);
         res.json({ ok: true, checkedOut: true, archived: true });
     }
     catch (e) {
@@ -270,6 +274,7 @@ exports.guestsRouter.post("/:id/archive", async (req, res) => {
             where: { id: req.params.id },
             data,
         });
+        await (0, roomUnlock_js_1.lockRoom)(guest.room.roomId);
         res.json({ ok: true, archived: true });
     }
     catch (e) {
@@ -290,6 +295,7 @@ exports.guestsRouter.delete("/:id", async (req, res) => {
         await db_js_1.prisma.guest.delete({ where: { id: req.params.id } });
         const remaining = await db_js_1.prisma.guest.count({ where: { roomId } });
         if (remaining === 0) {
+            await (0, roomUnlock_js_1.lockRoom)(guest.room.roomId);
             await db_js_1.prisma.room.delete({ where: { id: roomId } }).catch(() => { });
         }
         res.status(204).send();

@@ -5,8 +5,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 class ApiService {
   static const String _tokenKey = 'guest_token';
   // Use 10.0.2.2 for Android emulator to access localhost, or localhost for others.
-  // We'll use a configurable base URL. For web/macos testing, localhost:3000 is fine.
-  static String baseUrl = const String.fromEnvironment('API_URL', defaultValue: 'http://localhost:3000');
+  // We'll use a configurable base URL. For physical devices on the same Wi-Fi, use your Mac's IP.
+  static String baseUrl = const String.fromEnvironment(
+    'API_URL',
+    defaultValue: 'http://10.88.111.22:3000',
+  );
 
   String? _guestToken;
 
@@ -27,12 +30,20 @@ class ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> activate(String roomId, String firstName, String lastName) async {
+  Future<Map<String, dynamic>> activate(
+    String roomId,
+    String firstName,
+    String lastName,
+  ) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/api/me/activate'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'roomId': roomId, 'firstName': firstName, 'lastName': lastName}),
+        body: jsonEncode({
+          'roomId': roomId,
+          'firstName': firstName,
+          'lastName': lastName,
+        }),
       );
       return jsonDecode(response.body);
     } catch (e) {

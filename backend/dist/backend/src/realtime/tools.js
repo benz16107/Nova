@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.handleLogRequest = handleLogRequest;
 exports.handleGetWifiInfo = handleGetWifiInfo;
 exports.handleRequestAmenity = handleRequestAmenity;
+exports.handleStorePreference = handleStorePreference;
 exports.handleSubmitFeedback = handleSubmitFeedback;
 exports.runTool = runTool;
 const db_js_1 = require("../db.js");
@@ -29,6 +30,10 @@ async function handleGetWifiInfo() {
 async function handleRequestAmenity(ctx, item) {
     return handleLogRequest(ctx, "request", `Request amenity: ${item}`);
 }
+async function handleStorePreference(ctx, preference) {
+    await (0, backboard_js_1.addMemory)(ctx.guestId, ctx.roomId, `Preference: ${preference}`);
+    return "Done. Tell the guest: I've made a note of your preference for this stay.";
+}
 async function handleSubmitFeedback(ctx, content, source) {
     await db_js_1.prisma.feedback.create({
         data: {
@@ -48,6 +53,8 @@ async function runTool(name, args, ctx) {
             return handleGetWifiInfo();
         case "request_amenity":
             return handleRequestAmenity(ctx, String(args.item ?? ""));
+        case "store_preference":
+            return handleStorePreference(ctx, String(args.preference ?? ""));
         case "submit_feedback":
             return handleSubmitFeedback(ctx, String(args.content ?? ""), args.source === "voice" ? "voice" : "text");
         default:

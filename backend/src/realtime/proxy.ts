@@ -2,7 +2,8 @@ import type { IncomingMessage } from "http";
 import type { Socket } from "net";
 import WebSocket from "ws";
 import { prisma } from "../db.js";
-import { ensureThreadForGuest, getMemoriesForGuest, memorySummary } from "../backboard.js";
+import { isRoomUnlocked } from "../roomUnlock.js";
+import { addMemory, ensureThreadForGuest, getMemoriesForGuest, memorySummary } from "../backboard.js";
 import { runTool } from "./tools.js";
 import { INSTRUCTIONS, MODEL, VOICE, INPUT_LANGUAGE, TURN_THRESHOLD, TURN_SILENCE_MS, TURN_PREFIX_MS, WELCOME_MESSAGE } from "../../../nova-config.js";
 
@@ -17,7 +18,7 @@ const TOOLS = [
   {
     type: "function" as const,
     name: "log_request",
-    description: "Log a guest request or complaint. Use for any request (e.g. towels, room service) or complaint. After calling, always confirm to the guest that it was logged.",
+    description: "Log a guest request or complaint. CRITICAL: If the guest expresses dissatisfaction, annoyance, or reports something broken/dirty/missing (e.g. 'AC is broken', 'room is dirty', 'noise next door'), you MUST set type to 'complaint'. If they just want something standard (e.g. 'can I have more towels', 'room service'), set type to 'request'. After calling, always confirm to the guest that it was logged.",
     parameters: {
       type: "object",
       properties: {
@@ -41,6 +42,16 @@ const TOOLS = [
       type: "object",
       properties: { item: { type: "string" } },
       required: ["item"],
+    },
+  },
+  {
+    type: "function" as const,
+    name: "store_preference",
+    description: "Store a guest's preference or detail to remember for their stay (e.g. 'I'm allergic to peanuts', 'I prefer a firm pillow', 'It's my anniversary'). Use this when the guest shares information that isn't an actionable request but should be remembered. After calling, acknowledge they said it.",
+    parameters: {
+      type: "object",
+      properties: { preference: { type: "string", description: "The preference to remember" } },
+      required: ["preference"],
     },
   },
   {
@@ -80,6 +91,7 @@ export function attachRealtimeWebSocket(server: import("http").Server): void {
   });
 
   wss.on("connection", async (clientWs: WebSocket, _req: unknown, guestToken: string, outputMode: "text" | "voice" = "voice") => {
+    console.log(`[Realtime] New connection: guestToken=${guestToken}, outputMode=${outputMode}`);
     const guest = await prisma.guest.findUnique({
       where: { id: guestToken },
       include: { room: true },
@@ -97,11 +109,17 @@ export function attachRealtimeWebSocket(server: import("http").Server): void {
       clientWs.close(4003, "Not checked in");
       return;
     }
+    const roomUnlocked = await isRoomUnlocked(guest.room.roomId);
+    if (!roomUnlocked) {
+      clientWs.close(4003, "Room key not scanned at door yet");
+      return;
+    }
     const ctx = { guestId: guest.id, roomId: guest.room.roomId };
     await ensureThreadForGuest(guest.id);
     const memories = await getMemoriesForGuest(guest.id);
     const memoryText = memorySummary(memories);
     const contextLine = `Current guest (the person you are speaking with): ${guest.firstName}, Room ${guest.room.roomId}. Only use memories and preferences for this guest—do not attribute requests or preferences from other people in the room to ${guest.firstName}. ${memoryText}`;
+    const requestPolicyLine = "CRITICAL REQUEST POLICY: If the guest asks for service, reports an issue, or complains, you MUST call either log_request or request_amenity before you respond in natural language.";
 
     // Pending manager replies: deliver first thing when guest opens Nova, then mark as shown
     const pendingReplies = await prisma.request.findMany({
@@ -122,8 +140,8 @@ export function attachRealtimeWebSocket(server: import("http").Server): void {
 
     const instructionsWithWelcome: string =
       WELCOME_MESSAGE.trim() === ""
-        ? INSTRUCTIONS + "\n\n" + contextLine
-        : INSTRUCTIONS + "\n\nWhen the conversation starts, say this welcome out loud first, then wait for the guest: \"" + WELCOME_MESSAGE.trim() + "\"\n\n" + contextLine;
+        ? INSTRUCTIONS + "\n\n" + requestPolicyLine + "\n\n" + contextLine
+        : INSTRUCTIONS + "\n\nWhen the conversation starts, say this welcome out loud first, then wait for the guest: \"" + WELCOME_MESSAGE.trim() + "\"\n\n" + requestPolicyLine + "\n\n" + contextLine;
 
     const apiKey = getOpenAiKey();
     if (!apiKey) {
@@ -136,6 +154,57 @@ export function attachRealtimeWebSocket(server: import("http").Server): void {
       headers: { Authorization: `Bearer ${apiKey}` },
     });
 
+    const handledToolCalls = new Set<string>();
+    const rememberGuestUtterance = (text: string) => {
+      const content = text.trim();
+      if (!content) return;
+      const clipped = content.length > 320 ? `${content.slice(0, 320)}…` : content;
+      addMemory(ctx.guestId, ctx.roomId, `Guest said: ${clipped}`).catch(() => { });
+    };
+
+    const executeToolCall = (name: string, args: string | undefined, callId: string | undefined) => {
+      if (callId && handledToolCalls.has(callId)) return;
+      if (callId) handledToolCalls.add(callId);
+
+      let toolArgs: Record<string, unknown> = {};
+      try {
+        if (args) toolArgs = JSON.parse(args);
+      } catch { }
+
+      console.log(`[Realtime] 🔧 Tool call: ${name}`, JSON.stringify(toolArgs));
+      runTool(name, toolArgs, ctx)
+        .then((output) => {
+          if (callId) {
+            openaiWs.send(
+              JSON.stringify({
+                type: "conversation.item.create",
+                item: {
+                  type: "function_call_output",
+                  call_id: callId,
+                  output,
+                },
+              }),
+            );
+            openaiWs.send(JSON.stringify({ type: "response.create" }));
+          }
+        })
+        .catch((err) => {
+          if (callId) {
+            openaiWs.send(
+              JSON.stringify({
+                type: "conversation.item.create",
+                item: {
+                  type: "function_call_output",
+                  call_id: callId,
+                  output: String(err),
+                },
+              }),
+            );
+            openaiWs.send(JSON.stringify({ type: "response.create" }));
+          }
+        });
+    };
+
     openaiWs.on("open", () => {
       openaiWs.send(
         JSON.stringify({
@@ -145,6 +214,7 @@ export function attachRealtimeWebSocket(server: import("http").Server): void {
             output_modalities: outputMode === "text" ? ["text"] : ["audio"],
             instructions: instructionsWithWelcome,
             tools: TOOLS,
+            tool_choice: "auto",
             audio: {
               input: {
                 format: { type: "audio/pcm", rate: 24000 },
@@ -180,6 +250,9 @@ export function attachRealtimeWebSocket(server: import("http").Server): void {
       }
       const ev = parsed as { type: string; call_id?: string; name?: string; arguments?: string };
       const shouldTriggerFirstResponse = WELCOME_MESSAGE.trim() !== "" || managerMessageText.length > 0;
+      if (ev.type === "session.updated") {
+        console.log(`[Realtime] Session updated OK for guest ${ctx.guestId} (tools: ${TOOLS.length}, tool_choice: auto)`);
+      }
       if (ev.type === "session.updated" && shouldTriggerFirstResponse && !welcomeSent) {
         welcomeSent = true;
         // If there's a manager message, inject it as a user turn so the model is explicitly asked to deliver it
@@ -215,43 +288,22 @@ export function attachRealtimeWebSocket(server: import("http").Server): void {
           for (const item of responseData.output) {
             if (item.type === "function_call") {
               const { name, arguments: args, call_id: callId } = item;
-              let toolArgs: Record<string, unknown> = {};
-              try {
-                if (args) toolArgs = JSON.parse(args);
-              } catch { }
-
-              console.log(`[Realtime] Tool call: ${name}`, toolArgs);
-              runTool(name!, toolArgs, ctx)
-                .then((output) => {
-                  openaiWs.send(
-                    JSON.stringify({
-                      type: "conversation.item.create",
-                      item: {
-                        type: "function_call_output",
-                        call_id: callId,
-                        output,
-                      },
-                    }),
-                  );
-                  // Request the model to generate a response (voice or text) so the guest hears/sees confirmation
-                  openaiWs.send(JSON.stringify({ type: "response.create" }));
-                })
-                .catch((err) => {
-                  openaiWs.send(
-                    JSON.stringify({
-                      type: "conversation.item.create",
-                      item: {
-                        type: "function_call_output",
-                        call_id: callId,
-                        output: String(err),
-                      },
-                    }),
-                  );
-                  openaiWs.send(JSON.stringify({ type: "response.create" }));
-                });
+              if (name) executeToolCall(name, args, callId);
             }
           }
         }
+      }
+
+      if (ev.type === "response.function_call_arguments.done") {
+        const fnName = (parsed as any).name as string | undefined;
+        const fnArgs = (parsed as any).arguments as string | undefined;
+        const callId = (parsed as any).call_id as string | undefined;
+        if (fnName) executeToolCall(fnName, fnArgs, callId);
+      }
+
+      if (ev.type === "conversation.item.input_audio_transcription.completed") {
+        const transcript = String((parsed as any).transcript ?? "").trim();
+        if (transcript) rememberGuestUtterance(transcript);
       }
       clientWs.send(msg);
     });
@@ -262,6 +314,7 @@ export function attachRealtimeWebSocket(server: import("http").Server): void {
       try {
         const parsed = JSON.parse(str) as { type?: string; text?: string; audio?: string };
         if (parsed.type === "guest_text" && typeof parsed.text === "string" && parsed.text.trim()) {
+          rememberGuestUtterance(parsed.text);
           openaiWs.send(
             JSON.stringify({
               type: "conversation.item.create",

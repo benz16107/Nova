@@ -21,6 +21,14 @@ Base URL: `http://localhost:3000` (or your backend URL).
 - **POST /api/nfc/read**  
   Body: `{ "room_id": "101", "card_uid": "a1b2c3d4", "timestamp": "ISO8601" }`.  
   Resolves guest for room, activates concierge session, sends push to guest app.
+- **GET /api/nfc/reader-config/:readerId**  
+  Returns reader assignment: `{ "readerId": "reader-1", "roomId": "101" | null }`.
+- **POST /api/nfc/reader-config**  
+  Body: `{ "readerId": "reader-1", "roomId": "102" }`. Sets/updates reader room.
+- **DELETE /api/nfc/reader-config/:readerId**  
+  Clears a reader's room override.
+- **GET /api/nfc/reader-config**  
+  Lists current reader assignments.
 
 ## Guest app
 

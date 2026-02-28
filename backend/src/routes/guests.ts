@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../db.js";
 import { getMemoriesForGuest } from "../backboard.js";
+import { lockRoom } from "../roomUnlock.js";
 
 export const guestsRouter = Router();
 
@@ -208,6 +209,7 @@ guestsRouter.post("/:id/check-in", async (req, res) => {
       where: { roomId: guest.roomId },
       data: { checkedIn: true, checkedInAt: now },
     });
+    await lockRoom(guest.room.roomId);
     res.json({ ok: true, checkedIn: true });
   } catch (e) {
     res.status(500).json({ error: String(e) });
@@ -225,6 +227,7 @@ guestsRouter.post("/:id/undo-check-in", async (req, res) => {
       where: { roomId: guest.roomId },
       data: { checkedIn: false, checkedInAt: null },
     });
+    await lockRoom(guest.room.roomId);
     res.json({ ok: true, checkedIn: false });
   } catch (e) {
     res.status(500).json({ error: String(e) });
@@ -243,6 +246,7 @@ guestsRouter.post("/:id/check-out", async (req, res) => {
       where: { roomId: guest.roomId },
       data: { checkedOut: true, checkedOutAt: now, archived: true, archivedVia: "check_out" },
     });
+    await lockRoom(guest.room.roomId);
     res.json({ ok: true, checkedOut: true, archived: true });
   } catch (e) {
     res.status(500).json({ error: String(e) });
@@ -265,6 +269,7 @@ guestsRouter.post("/:id/archive", async (req, res) => {
       where: { id: req.params.id },
       data,
     });
+    await lockRoom(guest.room.roomId);
     res.json({ ok: true, archived: true });
   } catch (e) {
     res.status(500).json({ error: String(e) });
@@ -284,6 +289,7 @@ guestsRouter.delete("/:id", async (req, res) => {
     await prisma.guest.delete({ where: { id: req.params.id } });
     const remaining = await prisma.guest.count({ where: { roomId } });
     if (remaining === 0) {
+      await lockRoom(guest.room.roomId);
       await prisma.room.delete({ where: { id: roomId } }).catch(() => {});
     }
     res.status(204).send();

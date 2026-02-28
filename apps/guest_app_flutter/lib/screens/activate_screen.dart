@@ -5,7 +5,7 @@ import 'home_screen.dart';
 class ActivateScreen extends StatefulWidget {
   final ApiService apiService;
 
-  const ActivateScreen({Key? key, required this.apiService}) : super(key: key);
+  const ActivateScreen({super.key, required this.apiService});
 
   @override
   State<ActivateScreen> createState() => _ActivateScreenState();
@@ -42,7 +42,9 @@ class _ActivateScreenState extends State<ActivateScreen> {
       if (!mounted) return;
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => HomeScreen(apiService: widget.apiService)),
+        MaterialPageRoute(
+          builder: (_) => HomeScreen(apiService: widget.apiService),
+        ),
       );
     } else {
       setState(() => _errorMsg = res['error'] ?? 'Activation failed.');
@@ -51,62 +53,121 @@ class _ActivateScreenState extends State<ActivateScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Nova Guest Agent')),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 400),
-            child: Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              child: Padding(
-                padding: const EdgeInsets.all(32.0),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      'Activate your room',
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Enter your room number and name to get started.',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 32),
-                    TextField(
-                      controller: _roomIdController,
-                      decoration: const InputDecoration(labelText: 'Room number', border: OutlineInputBorder()),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _firstNameController,
-                      decoration: const InputDecoration(labelText: 'First name', border: OutlineInputBorder()),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _lastNameController,
-                      decoration: const InputDecoration(labelText: 'Last name', border: OutlineInputBorder()),
-                    ),
-                    if (_errorMsg.isNotEmpty) ...[
-                      const SizedBox(height: 16),
-                      Text(_errorMsg, style: const TextStyle(color: Colors.red)),
-                    ],
-                    const SizedBox(height: 32),
-                    ElevatedButton(
-                      onPressed: _isLoading ? null : _activate,
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 460),
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.primaryContainer,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(
+                              Icons.hotel_rounded,
+                              color: theme.colorScheme.primary,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Welcome to Nova',
+                              style: theme.textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      child: Text(_isLoading ? 'Activating...' : 'Activate', style: const TextStyle(fontSize: 16)),
-                    ),
-                  ],
+                      const SizedBox(height: 14),
+                      Text(
+                        'Enter your room number and guest name to activate concierge access.',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      TextField(
+                        controller: _roomIdController,
+                        textInputAction: TextInputAction.next,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Room number',
+                          prefixIcon: Icon(Icons.meeting_room_outlined),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _firstNameController,
+                        textInputAction: TextInputAction.next,
+                        decoration: const InputDecoration(
+                          labelText: 'First name',
+                          prefixIcon: Icon(Icons.person_outline),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _lastNameController,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) {
+                          if (!_isLoading) _activate();
+                        },
+                        decoration: const InputDecoration(
+                          labelText: 'Last name',
+                          prefixIcon: Icon(Icons.badge_outlined),
+                        ),
+                      ),
+                      if (_errorMsg.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.errorContainer,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            _errorMsg,
+                            style: TextStyle(
+                              color: theme.colorScheme.onErrorContainer,
+                            ),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 18),
+                      ElevatedButton.icon(
+                        onPressed: _isLoading ? null : _activate,
+                        icon: _isLoading
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.login_rounded),
+                        label: Text(
+                          _isLoading ? 'Activating...' : 'Activate room access',
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),

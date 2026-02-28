@@ -19,7 +19,7 @@ export default function Login() {
   return (
     <div style={{ maxWidth: 320, margin: "80px auto", padding: 24, background: "#fff", borderRadius: 8, boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
       <h1 style={{ marginTop: 0 }}>Hotel Concierge</h1>
-      <p style={{ color: "#666", marginBottom: 24 }}>Manager dashboard</p>
+      <p style={{ color: "#666", marginBottom: 24 }}>Nova Manager Dashboard</p>
       <form onSubmit={handleSubmit}>
         <label style={{ display: "block", marginBottom: 8 }}>Password</label>
         <input

@@ -77,6 +77,10 @@ export default function Guests() {
   const [highlightedRoomId, setHighlightedRoomId] = useState<string | null>(null);
   const [archivedSectionExpanded, setArchivedSectionExpanded] = useState(false);
 
+  // Card programming state
+  const [programmingRoom, setProgrammingRoom] = useState<{ id: string; roomId: string; guests: Guest[] } | null>(null);
+  const [programmingStatus, setProgrammingStatus] = useState<"pending" | "success" | "failed" | null>(null);
+
   function scrollToRoomInList(roomId: string) {
     const el = document.getElementById(`room-row-${roomId}`);
     if (el) {
@@ -197,6 +201,65 @@ export default function Guests() {
       );
   }, [expandedRoomId, rooms]);
 
+  // Poll for card writing status
+  useEffect(() => {
+    if (!programmingRoom || programmingStatus !== "pending") return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/nfc/write-status/${programmingRoom.roomId}`);
+        if (res.ok) {
+          const { status } = await res.json();
+          if (status === "success") {
+            setProgrammingStatus("success");
+            clearInterval(interval);
+            // Auto finalize check-in
+            setTimeout(() => finalizeCheckIn(programmingRoom), 1500);
+          } else if (status === "failed") {
+            setProgrammingStatus("failed");
+            clearInterval(interval);
+          }
+        }
+      } catch (e) {
+        console.error("Error polling NFC status:", e);
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [programmingRoom?.id, programmingStatus]);
+
+  async function finalizeCheckIn(room: { id: string; roomId: string; guests: Guest[] }) {
+    const scrollY = window.scrollY;
+    // Only call check-in API if not already checked in (to preserve checkedInAt timestamp)
+    const isAlreadyCheckedIn = room.guests?.some(g => g.checkedIn && !g.checkedOut);
+
+    if (!isAlreadyCheckedIn) {
+      for (const g of room.guests ?? []) {
+        await fetch(`/api/guests/${g.id}/check-in`, { method: "POST" });
+      }
+      await load();
+    }
+
+    setProgrammingRoom(null);
+    setProgrammingStatus(null);
+    requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, scrollY)));
+  }
+
+  async function handleCancelProgramming() {
+    if (!programmingRoom) return;
+    try {
+      await fetch("/api/nfc/cancel-write", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ roomId: programmingRoom.roomId }),
+      });
+    } catch (e) {
+      console.error("Error cancelling programming:", e);
+    }
+    setProgrammingRoom(null);
+    setProgrammingStatus(null);
+  }
+
   async function handleAddRoom(e: React.FormEvent) {
     e.preventDefault();
     setFormError("");
@@ -311,12 +374,22 @@ export default function Guests() {
   }
 
   async function handleCheckInRoom(room: { id: string; roomId: string; guests: Guest[] }) {
-    const scrollY = window.scrollY;
-    for (const g of room.guests ?? []) {
-      await fetch(`/api/guests/${g.id}/check-in`, { method: "POST" });
+    try {
+      // 1. Queue the write on the backend
+      const res = await fetch("/api/nfc/queue-write", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ roomId: room.roomId }),
+      });
+      if (res.ok) {
+        setProgrammingRoom(room);
+        setProgrammingStatus("pending");
+      } else {
+        alert("Failed to start card programming. Is the backend running?");
+      }
+    } catch (e) {
+      alert("Error starting check-in.");
     }
-    await load();
-    requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, scrollY)));
   }
 
   async function handleUndoCheckIn(room: { id: string; roomId: string; guests: Guest[] }) {
@@ -351,7 +424,7 @@ export default function Guests() {
           });
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }
 
   async function handleCheckOutConfirm() {
@@ -762,6 +835,49 @@ ${(d.requests?.length ?? 0) > 0 ? `<section><strong>Requests & complaints</stron
         </div>
       )}
 
+      {programmingRoom && (
+        <div className="modal-overlay">
+          <div className="modal" style={{ minWidth: 400, textAlign: "center", padding: "2rem" }}>
+            <h2 className="modal-title">NFC Programming: Room {programmingRoom.roomId}</h2>
+
+            <div style={{ margin: "2rem 0" }}>
+              {programmingStatus === "pending" && (
+                <>
+                  <div className="spinner mb-2" style={{ margin: "0 auto", width: 40, height: 40, border: "4px solid var(--border)", borderTopColor: "var(--accent)", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
+                  <p><strong>Checking in Guest...</strong></p>
+                  <p style={{ fontSize: "1.1rem", color: "var(--accent)", margin: "1rem 0" }}>
+                    Please tap a keycard to the Reader for <strong>Room {programmingRoom.roomId}</strong>.
+                  </p>
+                </>
+              )}
+
+              {programmingStatus === "success" && (
+                <>
+                  <div style={{ fontSize: "3rem", color: "var(--success)", marginBottom: "1rem" }}>✓</div>
+                  <p><strong>Success! Card Programmed.</strong></p>
+                  <p className="text-muted">Finalizing check-in...</p>
+                </>
+              )}
+
+              {programmingStatus === "failed" && (
+                <>
+                  <div style={{ fontSize: "3rem", color: "var(--error)", marginBottom: "1rem" }}>×</div>
+                  <p><strong>Programming Failed.</strong></p>
+                  <p className="text-muted">The hardware reported an error writing to the card.</p>
+                  <button type="button" className="btn btn-primary mt-2" onClick={() => handleCheckInRoom(programmingRoom)}>Retry Programming</button>
+                </>
+              )}
+            </div>
+
+            <button type="button" className="btn btn-ghost" onClick={handleCancelProgramming}>Cancel Check-in</button>
+
+            <style>{`
+              @keyframes spin { to { transform: rotate(360deg); } }
+            `}</style>
+          </div>
+        </div>
+      )}
+
       <section className="card" style={{ overflow: "visible" }}>
         <div className="card-body">
           <h2 className="section-title">Rooms</h2>
@@ -863,129 +979,132 @@ ${(d.requests?.length ?? 0) > 0 ? `<section><strong>Requests & complaints</stron
                     });
                   }
                   return list.map((r) => {
-                  const sortedGuests = [...(r.guests ?? [])].sort(
-                    (a, b) => new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime()
-                  );
-                  const main = sortedGuests[0];
-                  const additional = sortedGuests.slice(1);
-                  const statusText = !main ? "—" : main.checkedOut ? "Checked out" : main.checkedIn ? "Checked in" : "Reserved";
-                  const isExpanded = expandedRoomId === r.id || (searchLower !== "" && autoExpandedRoomIds.has(r.id));
-                  return (
-                    <Fragment key={r.id}>
-                      <tr id={`room-row-${r.roomId}`} className={highlightedRoomId === r.roomId ? "room-row-highlight" : ""}>
-                        <td style={{ whiteSpace: "nowrap" }}>{r.roomId}</td>
-                        <td style={{ whiteSpace: "nowrap" }}>{main ? `${main.firstName} ${main.lastName}` : "—"}</td>
-                        <td style={{ whiteSpace: "nowrap" }}>
-                          <span className="flex align-center" style={{ gap: "0.35rem" }}>
-                            {(r.guests ?? []).length}
-                            {additional.length > 0 && (
-                              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setExpandedRoomId(isExpanded ? null : r.id)} title="Additional guests in this room" style={{ marginLeft: 0, paddingLeft: 0, paddingRight: 0, fontSize: "0.8rem" }}>
-                                {isExpanded ? "Hide" : "Show"}
-                              </button>
-                            )}
-                          </span>
-                        </td>
-                        <td style={{ whiteSpace: "nowrap" }}>{statusText}</td>
-                        <td style={{ whiteSpace: "nowrap" }}>{main ? formatTime(main.createdAt) : "—"}</td>
-                        <td style={{ whiteSpace: "nowrap" }}>{main && main.checkedInAt ? formatTime(main.checkedInAt) : "—"}</td>
-                        <td style={{ whiteSpace: "nowrap" }}>
-                          <div className="flex align-center gap-1" style={{ gap: "0.35rem", flexWrap: "nowrap" }}>
-                            <button type="button" className="btn btn-sm" onClick={(e) => openAddGuestModal(r.roomId, e)}>Add guest</button>
-                            {main && (
-                              <>
-                                <span className="flex align-center">
-                                  {!main.checkedIn && !main.checkedOut && <button type="button" className="btn btn-sm btn-accent" style={{ minWidth: "5.5rem" }} onClick={() => handleCheckInRoom(r)}>Check-in</button>}
-                                  {main.checkedIn && !main.checkedOut && <button type="button" className="btn btn-sm btn-primary" style={{ minWidth: "5.5rem" }} onClick={() => handleCheckOutClick(r)}>Check-out</button>}
-                                </span>
-                                <button type="button" className="btn btn-ghost btn-sm" onClick={() => handleArchiveRoom(r)}>Archive</button>
-                                <button
-                                  type="button"
-                                  className="btn btn-ghost btn-sm"
-                                  title="More actions"
-                                  onClick={(e) => {
-                                    if (moreMenuGuestId === main.id) {
-                                      setMoreMenuGuestId(null);
-                                      setMoreMenuPosition(null);
-                                    } else {
-                                      const rect = e.currentTarget.getBoundingClientRect();
-                                      const menuWidth = 160;
-                                      const padding = 8;
-                                      let left = rect.left;
-                                      let top = rect.bottom + 4;
-                                      if (left + menuWidth > window.innerWidth - padding) left = window.innerWidth - menuWidth - padding;
-                                      if (left < padding) left = padding;
-                                      if (top + 120 > window.innerHeight - padding) top = rect.top - 120 - 4;
-                                      if (top < padding) top = padding;
-                                      setMoreMenuPosition({ top, left });
-                                      setMoreMenuGuestId(main.id);
-                                    }
-                                  }}
-                                  style={{ padding: "0.35rem 0.5rem" }}
-                                >
-                                  More {moreMenuGuestId === main.id ? "▲" : "▼"}
-                                </button>
-                                {moreMenuGuestId === main.id && moreMenuPosition && (
-                                  <>
-                                    <div style={{ position: "fixed", inset: 0, zIndex: 1 }} onClick={() => { setMoreMenuGuestId(null); setMoreMenuPosition(null); }} />
-                                    <div className="card" style={{ position: "fixed", top: moreMenuPosition.top, left: moreMenuPosition.left, zIndex: 2, minWidth: 160, padding: "0.25rem 0" }}>
-                                      {main.checkedIn && !main.checkedOut && (
-                                        <button type="button" className="btn btn-ghost" style={{ display: "block", width: "100%", justifyContent: "flex-start" }} onClick={() => { handleUndoCheckIn(r); setMoreMenuGuestId(null); setMoreMenuPosition(null); }}>Mark as reserved</button>
-                                      )}
-                                      <button type="button" className="btn btn-ghost" style={{ display: "block", width: "100%", justifyContent: "flex-start" }} onClick={() => { setStayContextGuestId(main.id); setMoreMenuGuestId(null); setMoreMenuPosition(null); }}>Stay context</button>
-                                      <button type="button" className="btn btn-ghost" style={{ display: "block", width: "100%", justifyContent: "flex-start" }} onClick={() => { handlePrintSummary(main.id); setMoreMenuGuestId(null); setMoreMenuPosition(null); }}>Print summary</button>
-                                      <button type="button" className="btn btn-ghost text-error" style={{ display: "block", width: "100%", justifyContent: "flex-start" }} onClick={() => { handleDeleteRoom(r); setMoreMenuGuestId(null); setMoreMenuPosition(null); }}>Delete</button>
-                                    </div>
-                                  </>
-                                )}
-                                <button type="button" className="btn btn-ghost btn-sm" onClick={(e) => openEditModal(main, r.roomId, e)}>Edit</button>
-                              </>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                      {isExpanded && (
-                        <tr>
-                          <td colSpan={6} style={{ padding: 0, verticalAlign: "top", borderBottom: "1px solid var(--border)" }}>
-                            <div className="card-body" style={{ background: "var(--surface-hover)", padding: "1rem" }}>
-                              {previousStayByRoom[r.roomId] && (previousStayByRoom[r.roomId].memories.length > 0 || previousStayByRoom[r.roomId].guest) && (
-                                <div className="card-body mb-2" style={{ marginBottom: "0.75rem" }}>
-                                  <div className="section-title" style={{ marginBottom: "0.5rem" }}>Previous stay in this room</div>
-                                  {previousStayByRoom[r.roomId].guest && (
-                                    <div className="text-muted mb-1" style={{ fontSize: "0.85rem" }}>{previousStayByRoom[r.roomId].guest!.firstName} {previousStayByRoom[r.roomId].guest!.lastName}</div>
-                                  )}
-                                  {previousStayByRoom[r.roomId].memories.length > 0 ? (
-                                    <ul style={{ margin: 0, paddingLeft: "1.25rem", fontSize: "0.9rem" }}>
-                                      {previousStayByRoom[r.roomId].memories.map((mem, i) => (
-                                        <li key={i} className="mb-1">{mem}</li>
-                                      ))}
-                                    </ul>
-                                  ) : (
-                                    <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>No memories from previous stay.</p>
-                                  )}
-                                </div>
-                              )}
+                    const sortedGuests = [...(r.guests ?? [])].sort(
+                      (a, b) => new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime()
+                    );
+                    const main = sortedGuests[0];
+                    const additional = sortedGuests.slice(1);
+                    const statusText = !main ? "—" : main.checkedOut ? "Checked out" : main.checkedIn ? "Checked in" : "Reserved";
+                    const isExpanded = expandedRoomId === r.id || (searchLower !== "" && autoExpandedRoomIds.has(r.id));
+                    return (
+                      <Fragment key={r.id}>
+                        <tr id={`room-row-${r.roomId}`} className={highlightedRoomId === r.roomId ? "room-row-highlight" : ""}>
+                          <td style={{ whiteSpace: "nowrap" }}>{r.roomId}</td>
+                          <td style={{ whiteSpace: "nowrap" }}>{main ? `${main.firstName} ${main.lastName}` : "—"}</td>
+                          <td style={{ whiteSpace: "nowrap" }}>
+                            <span className="flex align-center" style={{ gap: "0.35rem" }}>
+                              {(r.guests ?? []).length}
                               {additional.length > 0 && (
+                                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setExpandedRoomId(isExpanded ? null : r.id)} title="Additional guests in this room" style={{ marginLeft: 0, paddingLeft: 0, paddingRight: 0, fontSize: "0.8rem" }}>
+                                  {isExpanded ? "Hide" : "Show"}
+                                </button>
+                              )}
+                            </span>
+                          </td>
+                          <td style={{ whiteSpace: "nowrap" }}>{statusText}</td>
+                          <td style={{ whiteSpace: "nowrap" }}>{main ? formatTime(main.createdAt) : "—"}</td>
+                          <td style={{ whiteSpace: "nowrap" }}>{main && main.checkedInAt ? formatTime(main.checkedInAt) : "—"}</td>
+                          <td style={{ whiteSpace: "nowrap" }}>
+                            <div className="flex align-center gap-1" style={{ gap: "0.35rem", flexWrap: "nowrap" }}>
+                              <button type="button" className="btn btn-sm" onClick={(e) => openAddGuestModal(r.roomId, e)}>Add guest</button>
+                              {main && (
                                 <>
-                                  <div className="section-title" style={{ marginBottom: "0.5rem" }}>Additional guests</div>
-                                  <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-                                    {additional.map((g) => (
-                                      <div key={g.id} className="flex flex-wrap align-center gap-1" style={{ padding: "0.5rem 0", borderBottom: "1px solid var(--border)" }}>
-                                        <span style={{ minWidth: 120 }}>{g.firstName} {g.lastName}</span>
-                                        <span style={{ flex: 1 }} />
-                                        <button type="button" className="btn btn-ghost btn-sm" onClick={(e) => openEditModal(g, r.roomId, e)}>Edit</button>
-                                        <button type="button" className="btn btn-ghost btn-sm text-error" onClick={() => handleDeleteGuest(g)}>Delete guest</button>
+                                  <span className="flex align-center">
+                                    {!main.checkedIn && !main.checkedOut && <button type="button" className="btn btn-sm btn-accent" style={{ minWidth: "5.5rem" }} onClick={() => handleCheckInRoom(r)}>Check-in</button>}
+                                    {main.checkedIn && !main.checkedOut && <button type="button" className="btn btn-sm btn-primary" style={{ minWidth: "5.5rem" }} onClick={() => handleCheckOutClick(r)}>Check-out</button>}
+                                  </span>
+                                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => handleArchiveRoom(r)}>Archive</button>
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost btn-sm"
+                                    title="More actions"
+                                    onClick={(e) => {
+                                      if (moreMenuGuestId === main.id) {
+                                        setMoreMenuGuestId(null);
+                                        setMoreMenuPosition(null);
+                                      } else {
+                                        const rect = e.currentTarget.getBoundingClientRect();
+                                        const menuWidth = 160;
+                                        const padding = 8;
+                                        let left = rect.left;
+                                        let top = rect.bottom + 4;
+                                        if (left + menuWidth > window.innerWidth - padding) left = window.innerWidth - menuWidth - padding;
+                                        if (left < padding) left = padding;
+                                        if (top + 120 > window.innerHeight - padding) top = rect.top - 120 - 4;
+                                        if (top < padding) top = padding;
+                                        setMoreMenuPosition({ top, left });
+                                        setMoreMenuGuestId(main.id);
+                                      }
+                                    }}
+                                    style={{ padding: "0.35rem 0.5rem" }}
+                                  >
+                                    More {moreMenuGuestId === main.id ? "▲" : "▼"}
+                                  </button>
+                                  {moreMenuGuestId === main.id && moreMenuPosition && (
+                                    <>
+                                      <div style={{ position: "fixed", inset: 0, zIndex: 1 }} onClick={() => { setMoreMenuGuestId(null); setMoreMenuPosition(null); }} />
+                                      <div className="card" style={{ position: "fixed", top: moreMenuPosition.top, left: moreMenuPosition.left, zIndex: 2, minWidth: 160, padding: "0.25rem 0" }}>
+                                        {main.checkedIn && !main.checkedOut && (
+                                          <>
+                                            <button type="button" className="btn btn-ghost" style={{ display: "block", width: "100%", justifyContent: "flex-start" }} onClick={() => { handleCheckInRoom(r); setMoreMenuGuestId(null); setMoreMenuPosition(null); }}>Register another card</button>
+                                            <button type="button" className="btn btn-ghost" style={{ display: "block", width: "100%", justifyContent: "flex-start" }} onClick={() => { handleUndoCheckIn(r); setMoreMenuGuestId(null); setMoreMenuPosition(null); }}>Mark as reserved</button>
+                                          </>
+                                        )}
+                                        <button type="button" className="btn btn-ghost" style={{ display: "block", width: "100%", justifyContent: "flex-start" }} onClick={() => { setStayContextGuestId(main.id); setMoreMenuGuestId(null); setMoreMenuPosition(null); }}>Stay context</button>
+                                        <button type="button" className="btn btn-ghost" style={{ display: "block", width: "100%", justifyContent: "flex-start" }} onClick={() => { handlePrintSummary(main.id); setMoreMenuGuestId(null); setMoreMenuPosition(null); }}>Print summary</button>
+                                        <button type="button" className="btn btn-ghost text-error" style={{ display: "block", width: "100%", justifyContent: "flex-start" }} onClick={() => { handleDeleteRoom(r); setMoreMenuGuestId(null); setMoreMenuPosition(null); }}>Delete</button>
                                       </div>
-                                    ))}
-                                  </div>
+                                    </>
+                                  )}
+                                  <button type="button" className="btn btn-ghost btn-sm" onClick={(e) => openEditModal(main, r.roomId, e)}>Edit</button>
                                 </>
                               )}
                             </div>
                           </td>
                         </tr>
-                      )}
-                    </Fragment>
-                  );
-                });
+                        {isExpanded && (
+                          <tr>
+                            <td colSpan={6} style={{ padding: 0, verticalAlign: "top", borderBottom: "1px solid var(--border)" }}>
+                              <div className="card-body" style={{ background: "var(--surface-hover)", padding: "1rem" }}>
+                                {previousStayByRoom[r.roomId] && (previousStayByRoom[r.roomId].memories.length > 0 || previousStayByRoom[r.roomId].guest) && (
+                                  <div className="card-body mb-2" style={{ marginBottom: "0.75rem" }}>
+                                    <div className="section-title" style={{ marginBottom: "0.5rem" }}>Previous stay in this room</div>
+                                    {previousStayByRoom[r.roomId].guest && (
+                                      <div className="text-muted mb-1" style={{ fontSize: "0.85rem" }}>{previousStayByRoom[r.roomId].guest!.firstName} {previousStayByRoom[r.roomId].guest!.lastName}</div>
+                                    )}
+                                    {previousStayByRoom[r.roomId].memories.length > 0 ? (
+                                      <ul style={{ margin: 0, paddingLeft: "1.25rem", fontSize: "0.9rem" }}>
+                                        {previousStayByRoom[r.roomId].memories.map((mem, i) => (
+                                          <li key={i} className="mb-1">{mem}</li>
+                                        ))}
+                                      </ul>
+                                    ) : (
+                                      <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>No memories from previous stay.</p>
+                                    )}
+                                  </div>
+                                )}
+                                {additional.length > 0 && (
+                                  <>
+                                    <div className="section-title" style={{ marginBottom: "0.5rem" }}>Additional guests</div>
+                                    <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                                      {additional.map((g) => (
+                                        <div key={g.id} className="flex flex-wrap align-center gap-1" style={{ padding: "0.5rem 0", borderBottom: "1px solid var(--border)" }}>
+                                          <span style={{ minWidth: 120 }}>{g.firstName} {g.lastName}</span>
+                                          <span style={{ flex: 1 }} />
+                                          <button type="button" className="btn btn-ghost btn-sm" onClick={(e) => openEditModal(g, r.roomId, e)}>Edit</button>
+                                          <button type="button" className="btn btn-ghost btn-sm text-error" onClick={() => handleDeleteGuest(g)}>Delete guest</button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  });
                 })()}
               </tbody>
             </table>
@@ -1001,15 +1120,15 @@ ${(d.requests?.length ?? 0) > 0 ? `<section><strong>Requests & complaints</stron
                 {archivedSectionExpanded
                   ? "Checked-out or archived rooms are listed here."
                   : (() => {
-                      const byRoom = new Map<string, Guest[]>();
-                      for (const g of archivedGuests) {
-                        const id = g.roomId;
-                        if (!byRoom.has(id)) byRoom.set(id, []);
-                        byRoom.get(id)!.push(g);
-                      }
-                      const count = byRoom.size;
-                      return count === 0 ? "No archived rooms yet." : `${count} archived room${count === 1 ? "" : "s"}.`;
-                    })()}
+                    const byRoom = new Map<string, Guest[]>();
+                    for (const g of archivedGuests) {
+                      const id = g.roomId;
+                      if (!byRoom.has(id)) byRoom.set(id, []);
+                      byRoom.get(id)!.push(g);
+                    }
+                    const count = byRoom.size;
+                    return count === 0 ? "No archived rooms yet." : `${count} archived room${count === 1 ? "" : "s"}.`;
+                  })()}
               </p>
             </div>
             <button
