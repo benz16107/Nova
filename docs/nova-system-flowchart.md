@@ -15,7 +15,7 @@ flowchart LR
     end
 
     %% Guest Timeline
-    subgraph GST[Guest Timeline (branches from Manager Step 3)]
+    subgraph GST["Guest Timeline (branches from Manager Step 3)"]
         direction LR
         G1([1. Guest arrives and scans\nregistered room card])
         G2([2. Nova in guest app is enabled])
