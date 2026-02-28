@@ -77,7 +77,7 @@ export default function Layout() {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "1.5rem" }}>
-          <span style={{ fontSize: "var(--text-lg)", fontWeight: 600, color: "var(--text)", whiteSpace: "nowrap" }}>Manager Dashboard</span>
+          <span style={{ fontSize: "var(--text-lg)", fontWeight: 600, color: "var(--text)", whiteSpace: "nowrap" }}>Nova Manager Dashboard</span>
           <nav style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
             {nav.map(({ path, label }) => (
               <Link

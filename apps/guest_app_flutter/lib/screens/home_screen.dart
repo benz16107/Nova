@@ -6,7 +6,7 @@ import 'concierge_screen.dart';
 class HomeScreen extends StatefulWidget {
   final ApiService apiService;
 
-  const HomeScreen({Key? key, required this.apiService}) : super(key: key);
+  const HomeScreen({super.key, required this.apiService});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -35,7 +35,9 @@ class _HomeScreenState extends State<HomeScreen> {
       if (res.containsKey('error') && res['error'] != null) {
         _conciergeAllowed = false; // Kick out or show checked out
       } else {
-        _conciergeAllowed = res['conciergeAllowed'] is bool ? res['conciergeAllowed'] : false;
+        _conciergeAllowed = res['conciergeAllowed'] is bool
+            ? res['conciergeAllowed']
+            : false;
         if (res['guest'] != null) {
           _guestName = res['guest']['firstName'];
           _roomId = res['guest']['roomId'];
@@ -43,9 +45,10 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     });
 
-    if (res['error'] == 'unauthorized' || res['error'] == 'Failed to fetch status') {
-       // invalid token, redirect
-       _logout();
+    if (res['error'] == 'unauthorized' ||
+        res['error'] == 'Failed to fetch status') {
+      // invalid token, redirect
+      _logout();
     }
   }
 
@@ -65,70 +68,150 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (_) => ActivateScreen(apiService: widget.apiService)),
+      MaterialPageRoute(
+        builder: (_) => ActivateScreen(apiService: widget.apiService),
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     if (_isLoading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     if (_conciergeAllowed == false) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Nova Guest Agent')),
-        body: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 500),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text('You have checked out', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
-                  Text('Thank you for staying with us. We hope you had a great stay.', style: Theme.of(context).textTheme.bodyLarge),
-                  const SizedBox(height: 32),
-                  if (!_feedbackSent) ...[
+        body: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 500),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
                     Card(
                       child: Padding(
-                        padding: const EdgeInsets.all(24.0),
+                        padding: const EdgeInsets.all(20),
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('Leave feedback (optional)', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-                            const SizedBox(height: 8),
-                            const Text('Share any feedback about your stay.'),
-                            const SizedBox(height: 16),
-                            TextField(
-                              maxLines: 3,
-                              onChanged: (v) => setState(() => _feedbackText = v),
-                              decoration: const InputDecoration(
-                                hintText: 'e.g. The shower was great, would love late checkout next time...',
-                                border: OutlineInputBorder(),
-                              ),
+                            Row(
+                              children: [
+                                Container(
+                                  width: 40,
+                                  height: 40,
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.secondaryContainer,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Icon(
+                                    Icons.check_circle_outline,
+                                    color: theme.colorScheme.secondary,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Text(
+                                  'Stay completed',
+                                  style: theme.textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 16),
-                            ElevatedButton(
-                              onPressed: _feedbackText.trim().isNotEmpty && !_feedbackSending ? _submitFeedback : null,
-                              child: Text(_feedbackSending ? 'Sending...' : 'Submit feedback'),
+                            const SizedBox(height: 10),
+                            Text(
+                              'You have checked out. Thank you for staying with us.',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
                             ),
                           ],
                         ),
                       ),
                     ),
-                  ] else ...[
-                    const Card(
-                      child: Padding(
-                        padding: EdgeInsets.all(24.0),
-                        child: Text('Thank you, your feedback has been recorded.', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 18),
+                    if (!_feedbackSent) ...[
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Text(
+                                'Leave feedback (optional)',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Share anything that can help us improve your next visit.',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              TextField(
+                                maxLines: 3,
+                                onChanged: (v) =>
+                                    setState(() => _feedbackText = v),
+                                decoration: const InputDecoration(
+                                  hintText:
+                                      'e.g. Great stay, would love later checkout next time.',
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              FilledButton.icon(
+                                onPressed:
+                                    _feedbackText.trim().isNotEmpty &&
+                                        !_feedbackSending
+                                    ? _submitFeedback
+                                    : null,
+                                icon: _feedbackSending
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Icon(Icons.send_rounded),
+                                label: Text(
+                                  _feedbackSending
+                                      ? 'Sending...'
+                                      : 'Submit feedback',
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
+                    ] else ...[
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Text(
+                            'Thank you. Your feedback has been submitted.',
+                            style: TextStyle(
+                              color: theme.colorScheme.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    OutlinedButton.icon(
+                      onPressed: _logout,
+                      icon: const Icon(Icons.logout_rounded),
+                      label: const Text('Log out'),
                     ),
                   ],
-                  const SizedBox(height: 24),
-                  TextButton(onPressed: _logout, child: const Text('Log out')),
-                ],
+                ),
               ),
             ),
           ),
@@ -137,36 +220,82 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_roomId != null ? 'Room $_roomId' : 'Your room'),
-        actions: [
-          IconButton(icon: const Icon(Icons.logout), onPressed: _logout),
-        ],
-      ),
-      body: Center(
+      body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(24.0),
+          padding: const EdgeInsets.all(20),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (_guestName != null) Text('Welcome, $_guestName', style: Theme.of(context).textTheme.headlineSmall),
-              const SizedBox(height: 16),
-              Text('Talk to Nova for help with anything you need.', style: Theme.of(context).textTheme.bodyLarge, textAlign: TextAlign.center),
-              const SizedBox(height: 32),
-              ElevatedButton.icon(
-                icon: const Icon(Icons.mic),
-                label: const Text('Open Nova', style: TextStyle(fontSize: 18)),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _roomId != null ? 'Room $_roomId' : 'Your room',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: _loadData,
+                    icon: const Icon(Icons.refresh_rounded),
+                    tooltip: 'Refresh status',
+                  ),
+                  IconButton(
+                    onPressed: _logout,
+                    icon: const Icon(Icons.logout_rounded),
+                    tooltip: 'Log out',
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (_guestName != null)
+                        Text(
+                          'Welcome, $_guestName',
+                          style: theme.textTheme.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Ask Nova for room help, requests, and common hotel information.',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
+              ),
+              const Spacer(),
+              FilledButton.icon(
+                icon: const Icon(Icons.mic_none_rounded),
+                label: const Text('Open Nova concierge'),
                 onPressed: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => ConciergeScreen(apiService: widget.apiService)),
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          ConciergeScreen(apiService: widget.apiService),
+                    ),
                   );
                 },
               ),
+              const SizedBox(height: 8),
+              Text(
+                'Voice and text are both supported inside concierge.',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 8),
             ],
           ),
         ),

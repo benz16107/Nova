@@ -88,9 +88,8 @@ async function resolveAssistantId(): Promise<string | null> {
     }
 
     const list = await fetchBackboard("/assistants");
-    if (list.ok && list.data && typeof list.data === "object") {
-      const obj = list.data as Record<string, unknown>;
-      const arr = Array.isArray(obj.assistants) ? obj.assistants : [];
+    if (list.ok && list.data) {
+      const arr = Array.isArray(list.data) ? list.data : [];
       const first = arr[0];
       const id =
         first && typeof first === "object" && first !== null
@@ -100,7 +99,7 @@ async function resolveAssistantId(): Promise<string | null> {
         cachedAssistantId = id;
         try {
           fs.writeFileSync(CACHE_FILE, id, "utf8");
-        } catch {}
+        } catch { }
         return id;
       }
     }
@@ -119,7 +118,7 @@ async function resolveAssistantId(): Promise<string | null> {
         cachedAssistantId = id;
         try {
           fs.writeFileSync(CACHE_FILE, id, "utf8");
-        } catch {}
+        } catch { }
         return id;
       }
     }
@@ -175,9 +174,13 @@ export async function getAllMemoriesRaw(): Promise<MemoryItem[]> {
   if (!assistantId) return [];
   const res = await fetchBackboard(`/assistants/${assistantId}/memories`);
   if (!res.ok) return [];
-  if (!res.data || typeof res.data !== "object") return [];
-  const obj = res.data as Record<string, unknown>;
-  const raw = obj.data ?? obj.memories;
+  const raw =
+    Array.isArray(res.data)
+      ? res.data
+      : res.data && typeof res.data === "object"
+        ? ((res.data as Record<string, unknown>).data ??
+          (res.data as Record<string, unknown>).memories)
+        : [];
   const list = Array.isArray(raw) ? raw : [];
   return list
     .filter((m): m is Record<string, unknown> => m != null && typeof m === "object")
@@ -222,19 +225,28 @@ export async function addMemory(
   if (!BACKBOARD_MEMORY_ENABLED) return;
   const assistantId = await resolveAssistantId();
   if (!assistantId) return;
-  await fetchBackboard(`/assistants/${assistantId}/memories`, {
+  const res = await fetchBackboard(`/assistants/${assistantId}/memories`, {
     method: "POST",
     body: JSON.stringify({
       content,
       metadata: { guest_id: String(guestId), room_id: String(roomId) },
     }),
   });
+  if (!res.ok) {
+    console.warn(
+      `Backboard addMemory failed (${res.status || "request_failed"}): ${res.text.slice(0, 200).replace(/\n/g, " ")}`
+    );
+  }
 }
 
 export function memorySummary(memories: string[]): string {
   if (memories.length === 0) return "No prior requests or complaints this stay.";
   const limit = Math.max(1, BACKBOARD_MEMORY_CONTEXT_LIMIT);
-  return "Past during this stay: " + memories.slice(-limit).join("; ");
+  // Memories from Backboard are newest-first (descending).
+  // We take the top `limit` newest memories, then reverse them so they flow chronologically (oldest -> newest)
+  // This helps the AI understand what the "last" request was.
+  const chronological = memories.slice(0, limit).reverse();
+  return "Past during this stay (chronological order): " + chronological.join("; ");
 }
 
 export async function checkBackboardConnection(): Promise<{ ok: boolean }> {

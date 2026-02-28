@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.roomsRouter = void 0;
 const express_1 = require("express");
 const db_js_1 = require("../db.js");
+const roomUnlock_js_1 = require("../roomUnlock.js");
 exports.roomsRouter = (0, express_1.Router)();
 // Bookings = guest per room for MVP. Active list: rooms that have at least one non-archived guest.
 exports.roomsRouter.get("/", async (_req, res) => {
@@ -40,6 +41,7 @@ exports.roomsRouter.post("/:id/restore", async (req, res) => {
                 checkedInAt: null,
             },
         });
+        await (0, roomUnlock_js_1.lockRoom)(room.roomId);
         res.json({ ok: true, roomId: room.roomId });
     }
     catch (e) {
@@ -60,6 +62,7 @@ exports.roomsRouter.delete("/:id", async (req, res) => {
         }
         await db_js_1.prisma.guest.deleteMany({ where: { roomId: room.id } });
         await db_js_1.prisma.room.delete({ where: { id: room.id } });
+        await (0, roomUnlock_js_1.lockRoom)(room.roomId);
         res.status(204).send();
     }
     catch (e) {

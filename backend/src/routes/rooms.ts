@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../db.js";
+import { lockRoom } from "../roomUnlock.js";
 
 export const roomsRouter = Router();
 
@@ -38,6 +39,7 @@ roomsRouter.post("/:id/restore", async (req, res) => {
         checkedInAt: null,
       },
     });
+    await lockRoom(room.roomId);
     res.json({ ok: true, roomId: room.roomId });
   } catch (e) {
     res.status(500).json({ error: String(e) });
@@ -57,6 +59,7 @@ roomsRouter.delete("/:id", async (req, res) => {
     }
     await prisma.guest.deleteMany({ where: { roomId: room.id } });
     await prisma.room.delete({ where: { id: room.id } });
+    await lockRoom(room.roomId);
     res.status(204).send();
   } catch (e) {
     res.status(500).json({ error: String(e) });

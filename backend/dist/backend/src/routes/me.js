@@ -3,7 +3,17 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.meRouter = void 0;
 const express_1 = require("express");
 const db_js_1 = require("../db.js");
+const roomUnlock_js_1 = require("../roomUnlock.js");
 exports.meRouter = (0, express_1.Router)();
+function getConciergeBlockedReason(guest, roomUnlocked) {
+    if (guest.checkedOut)
+        return "checked_out";
+    if (!guest.checkedIn)
+        return "not_checked_in";
+    if (!roomUnlocked)
+        return "door_not_unlocked";
+    return null;
+}
 // GET /api/me — requires guest_token or session; for MVP we use query guestId for testing
 exports.meRouter.get("/", async (req, res) => {
     try {
@@ -21,8 +31,10 @@ exports.meRouter.get("/", async (req, res) => {
         const session = await db_js_1.prisma.conciergeSession.findUnique({
             where: { guestId: guest.id },
         });
-        const conciergeActive = session?.active ?? false;
-        const conciergeAllowed = guest.checkedIn && !guest.checkedOut;
+        const roomUnlocked = await (0, roomUnlock_js_1.isRoomUnlocked)(guest.room.roomId);
+        const conciergeActive = (session?.active ?? false) && roomUnlocked;
+        const conciergeAllowed = guest.checkedIn && !guest.checkedOut && roomUnlocked;
+        const conciergeBlockedReason = getConciergeBlockedReason({ checkedIn: guest.checkedIn, checkedOut: guest.checkedOut }, roomUnlocked);
         res.json({
             guest: {
                 id: guest.id,
@@ -32,6 +44,7 @@ exports.meRouter.get("/", async (req, res) => {
             },
             conciergeActive,
             conciergeAllowed,
+            conciergeBlockedReason,
         });
     }
     catch (e) {
@@ -49,10 +62,12 @@ exports.meRouter.post("/activate", async (req, res) => {
         if (!room) {
             return res.status(404).json({ error: "Room not found" });
         }
-        const guest = await db_js_1.prisma.guest.findFirst({
-            where: { roomId: room.id, firstName: firstName.trim(), lastName: lastName.trim() },
+        const roomGuests = await db_js_1.prisma.guest.findMany({
+            where: { roomId: room.id },
             include: { room: true },
         });
+        const guest = roomGuests.find(g => g.firstName.trim().toLowerCase() === firstName.trim().toLowerCase() &&
+            g.lastName.trim().toLowerCase() === lastName.trim().toLowerCase());
         if (!guest) {
             return res.status(404).json({ error: "No guest found for this room and name" });
         }
@@ -61,6 +76,10 @@ exports.meRouter.post("/activate", async (req, res) => {
         }
         if (!guest.checkedIn) {
             return res.status(403).json({ error: "Not checked in. Please check in at the front desk to use Nova." });
+        }
+        const roomUnlocked = await (0, roomUnlock_js_1.isRoomUnlocked)(room.roomId);
+        if (!roomUnlocked) {
+            return res.status(403).json({ error: "Room key not scanned at door yet. Please tap your key card at the room reader first." });
         }
         if (pushToken) {
             await db_js_1.prisma.guest.update({

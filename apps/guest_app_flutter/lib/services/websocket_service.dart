@@ -3,7 +3,10 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 class WebsocketService {
   WebSocketChannel? _channel;
-  final String _wsBaseUrl = const String.fromEnvironment('WS_URL', defaultValue: 'ws://localhost:3000');
+  final String _wsBaseUrl = const String.fromEnvironment(
+    'WS_URL',
+    defaultValue: 'ws://10.88.111.22:3000',
+  );
 
   bool get isConnected => _channel != null;
 
@@ -15,7 +18,9 @@ class WebsocketService {
     required Function() onDone,
     required Function(dynamic) onError,
   }) {
-    final uri = Uri.parse('$_wsBaseUrl/api/realtime/connect?guest_token=$token&input_mode=$inputMode&output_mode=$outputMode');
+    final uri = Uri.parse(
+      '$_wsBaseUrl/api/realtime/connect?guest_token=$token&input_mode=$inputMode&output_mode=$outputMode',
+    );
     _channel = WebSocketChannel.connect(uri);
 
     _channel!.stream.listen(
@@ -40,19 +45,15 @@ class WebsocketService {
 
   void sendAudioBuffer(String base64Audio) {
     if (_channel != null) {
-      _channel!.sink.add(jsonEncode({
-        'type': 'input_audio_buffer.append',
-        'audio': base64Audio,
-      }));
+      _channel!.sink.add(
+        jsonEncode({'type': 'input_audio_buffer.append', 'audio': base64Audio}),
+      );
     }
   }
 
   void sendText(String text) {
     if (_channel != null) {
-      _channel!.sink.add(jsonEncode({
-        'type': 'guest_text',
-        'text': text,
-      }));
+      _channel!.sink.add(jsonEncode({'type': 'guest_text', 'text': text}));
     }
   }
 

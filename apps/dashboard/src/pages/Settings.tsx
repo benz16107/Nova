@@ -13,6 +13,10 @@ export default function Settings() {
   const [passwordForm, setPasswordForm] = useState({ current: "", new: "", confirm: "" });
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [inspectLoading, setInspectLoading] = useState(false);
+  const [inspectStatus, setInspectStatus] = useState<"idle" | "pending" | "success" | "failed">("idle");
+  const [inspectRoomId, setInspectRoomId] = useState<string | null>(null);
+  const [inspectError, setInspectError] = useState<string | null>(null);
 
   useEffect(() => {
     setHotelNameEdit(hotelName ?? "");
@@ -122,6 +126,47 @@ export default function Settings() {
       return next;
     });
   }
+
+  async function startCardRoomCheck() {
+    setInspectError(null);
+    setInspectRoomId(null);
+    setInspectLoading(true);
+    try {
+      const res = await fetch("/api/nfc/inspect-card/queue", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setInspectError(data.error || "Failed to start card check.");
+        return;
+      }
+      setInspectStatus("pending");
+    } finally {
+      setInspectLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (inspectStatus !== "pending") return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch("/api/nfc/inspect-card/status");
+        if (!res.ok) return;
+        const data = await res.json().catch(() => null) as {
+          status?: "idle" | "pending" | "success" | "failed";
+          roomId?: string | null;
+        } | null;
+        if (!data?.status) return;
+        if (data.status === "success") {
+          setInspectStatus("success");
+          setInspectRoomId(data.roomId ?? null);
+        } else if (data.status === "failed") {
+          setInspectStatus("failed");
+        }
+      } catch {
+        // ignore poll error
+      }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [inspectStatus]);
 
   if (loading) {
     return (
@@ -315,6 +360,41 @@ export default function Settings() {
           {passwordMessage && (
             <span style={{ color: passwordMessage.type === "ok" ? "var(--success)" : "var(--error)", fontSize: "var(--text-sm)" }}>
               {passwordMessage.text}
+            </span>
+          )}
+        </div>
+      </section>
+
+      {/* Card room checker */}
+      <section style={{ marginTop: "2rem" }}>
+        <h2 style={{ fontSize: "var(--text-base)", fontWeight: 600, marginBottom: "0.5rem", color: "var(--text)" }}>
+          Card room checker
+        </h2>
+        <p style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", marginBottom: "0.75rem" }}>
+          Start scan mode, tap a key card on the reader, then see which room is encoded on the card.
+        </p>
+        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={startCardRoomCheck}
+            disabled={inspectLoading || inspectStatus === "pending"}
+          >
+            {inspectStatus === "pending" ? "Waiting for card scan…" : inspectLoading ? "Starting…" : "Check card room"}
+          </button>
+          {inspectStatus === "success" && inspectRoomId && (
+            <span style={{ color: "var(--success)", fontSize: "var(--text-sm)" }}>
+              Card is registered to room {inspectRoomId}.
+            </span>
+          )}
+          {inspectStatus === "failed" && (
+            <span style={{ color: "var(--error)", fontSize: "var(--text-sm)" }}>
+              Could not read room from card. Try again.
+            </span>
+          )}
+          {inspectError && (
+            <span style={{ color: "var(--error)", fontSize: "var(--text-sm)" }}>
+              {inspectError}
             </span>
           )}
         </div>

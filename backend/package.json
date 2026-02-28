@@ -6,6 +6,7 @@
     "build": "tsc",
     "start": "node dist/backend/src/index.js",
     "dev": "tsx watch src/index.ts",
+    "reader:cli": "tsx src/tools/reader-cli.ts",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",

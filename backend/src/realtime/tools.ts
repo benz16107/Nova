@@ -33,6 +33,11 @@ export async function handleRequestAmenity(ctx: ToolContext, item: string): Prom
   return handleLogRequest(ctx, "request", `Request amenity: ${item}`);
 }
 
+export async function handleStorePreference(ctx: ToolContext, preference: string): Promise<string> {
+  await addMemory(ctx.guestId, ctx.roomId, `Preference: ${preference}`);
+  return "Done. Tell the guest: I've made a note of your preference for this stay.";
+}
+
 export async function handleSubmitFeedback(ctx: ToolContext, content: string, source: "text" | "voice"): Promise<string> {
   await prisma.feedback.create({
     data: {
@@ -61,6 +66,9 @@ export async function runTool(
       return handleGetWifiInfo();
     case "request_amenity":
       return handleRequestAmenity(ctx, String(args.item ?? ""));
+    case "store_preference":
+      return handleStorePreference(ctx, String(args.preference ?? ""));
+
     case "submit_feedback":
       return handleSubmitFeedback(
         ctx,

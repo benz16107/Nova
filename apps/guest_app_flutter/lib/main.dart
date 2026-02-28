@@ -14,18 +14,59 @@ void main() async {
 class GuestApp extends StatelessWidget {
   final ApiService apiService;
 
-  const GuestApp({Key? key, required this.apiService}) : super(key: key);
+  const GuestApp({super.key, required this.apiService});
 
   @override
   Widget build(BuildContext context) {
+    final scheme = ColorScheme.fromSeed(
+      seedColor: const Color(0xFF0F766E),
+      brightness: Brightness.light,
+    );
+
     return MaterialApp(
       title: 'Nova Guest Agent',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF0f766e),
-          brightness: Brightness.light,
-        ),
+        colorScheme: scheme,
         useMaterial3: true,
+        scaffoldBackgroundColor: const Color(0xFFF6F8FB),
+        cardTheme: CardThemeData(
+          elevation: 0,
+          color: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: BorderSide(
+              color: scheme.outlineVariant.withValues(alpha: 0.35),
+            ),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: Colors.white,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide(color: scheme.outlineVariant),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide(color: scheme.outlineVariant),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide(color: scheme.primary, width: 1.5),
+          ),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 14,
+          ),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+          ),
+        ),
       ),
       home: apiService.guestToken != null
           ? HomeScreen(apiService: apiService)

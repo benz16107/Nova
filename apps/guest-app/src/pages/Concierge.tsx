@@ -174,14 +174,25 @@ export default function Concierge() {
         };
         if (msg.type === "error") {
           const err = msg.error ?? msg.message;
-          const text = typeof err === "string" ? err : (err?.message ?? JSON.stringify(err));
+          const text =
+            typeof err === "string"
+              ? err
+              : err &&
+                  typeof err === "object" &&
+                  "message" in err &&
+                  typeof (err as { message?: unknown }).message === "string"
+                ? (err as { message: string }).message
+                : JSON.stringify(err);
           setErrorMsg(text || "Something went wrong.");
           setStatus("error");
           return;
         }
         // User spoke (voice input): show transcript in chat
-        if (msg.type === "conversation.item.input_audio_transcription.completed" && typeof msg.transcript === "string" && msg.transcript.trim()) {
-          setMessages((prev) => [...prev, { role: "user", text: msg.transcript.trim() }]);
+        if (msg.type === "conversation.item.input_audio_transcription.completed") {
+          const transcript = typeof msg.transcript === "string" ? msg.transcript.trim() : "";
+          if (transcript) {
+            setMessages((prev) => [...prev, { role: "user", text: transcript }]);
+          }
         }
         if (outputMode === "voice" && msg.type === "response.output_audio.delta" && msg.delta) {
           const ctx = audioContextRef.current;
