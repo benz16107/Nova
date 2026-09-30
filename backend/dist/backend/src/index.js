@@ -13,7 +13,7 @@ const envPaths = [
 let loaded = false;
 for (const envPath of envPaths) {
     if (fs_1.default.existsSync(envPath)) {
-        const result = dotenv_1.default.config({ path: envPath, override: true });
+        const result = dotenv_1.default.config({ path: envPath, override: true, quiet: true });
         if (result.error)
             console.warn("dotenv error:", result.error.message);
         else
@@ -44,6 +44,11 @@ const roomUnlock_js_1 = require("./roomUnlock.js");
 const app = (0, express_1.default)();
 app.use((0, cors_1.default)());
 app.use(express_1.default.json());
+// Express 5 leaves req.body undefined when no body was parsed; routes destructure it, so keep Express 4's {}.
+app.use((req, _res, next) => {
+    req.body ??= {};
+    next();
+});
 const apiLimiter = (0, express_rate_limit_1.rateLimit)({
     windowMs: 15 * 60 * 1000,
     max: Number(process.env.RATE_LIMIT_MAX) || 2000,

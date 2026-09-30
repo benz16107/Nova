@@ -14,7 +14,8 @@ function getOpenAiKey() {
     const k = process.env.OPENAI_API_KEY;
     return typeof k === "string" && k.trim().length > 0 ? k.trim() : undefined;
 }
-const OPENAI_REALTIME_URL = `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(nova_config_js_1.MODEL)}`;
+// OPENAI_REALTIME_BASE_URL lets the tests point the proxy at a local fake upstream.
+const OPENAI_REALTIME_URL = `${process.env.OPENAI_REALTIME_BASE_URL ?? "wss://api.openai.com/v1/realtime"}?model=${encodeURIComponent(nova_config_js_1.MODEL)}`;
 const TOOLS = [
     {
         type: "function",

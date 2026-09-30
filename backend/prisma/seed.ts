@@ -1,6 +1,4 @@
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import { prisma } from "../src/db.js";
 
 /** Room IDs for 3 floors: [6, 6, 4] → 101-106, 201-206, 301-304 */
 const ROOM_IDS = [

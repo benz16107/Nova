@@ -4,7 +4,7 @@
 
 | Variable | Description |
 |----------|-------------|
-| `DATABASE_URL` | Prisma DB URL, e.g. `file:./dev.sqlite` |
+| `DATABASE_URL` | SQLite URL, e.g. `file:./dev.sqlite`. Relative paths resolve against `backend/prisma/` (default `file:./dev.sqlite`) |
 | `PORT` | Server port (default 3000) |
 | `MANAGER_PASSWORD` | Dashboard login password (default `hotel-staff`) |
 | `OPENAI_API_KEY` | Required for Realtime voice concierge |
@@ -13,6 +13,7 @@
 | `BACKBOARD_API_BASE` | Optional; default `https://app.backboard.io/api` |
 | `HOTEL_WIFI_NAME` | Shown by concierge (default `Hotel-Guest`) |
 | `HOTEL_WIFI_PASSWORD` | Shown by concierge (default `welcome123`) |
+| `OPENAI_REALTIME_BASE_URL` | Optional; default `wss://api.openai.com/v1/realtime`. The tests point it at a local fake |
 
 Copy `backend/.env.example` to `backend/.env` and set values.
 

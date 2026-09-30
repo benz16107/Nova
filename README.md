@@ -8,7 +8,7 @@ A hotel room concierge system: **manager dashboard** for staff, **guest app** fo
 
 ### Prerequisites
 
-- **Node.js** 18+
+- **Node.js** 22.12+ (OpenAI SDK 7, Prisma 7 and Vite 8 need it; tested on 26.9)
 - **OpenAI API key** – [platform.openai.com](https://platform.openai.com/) (required for voice concierge)
 - **Backboard API key** (optional, for memory) – [Backboard](https://app.backboard.io/)
 

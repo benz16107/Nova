@@ -9,7 +9,7 @@ const envPaths = [
 let loaded = false;
 for (const envPath of envPaths) {
   if (fs.existsSync(envPath)) {
-    const result = dotenv.config({ path: envPath, override: true });
+    const result = dotenv.config({ path: envPath, override: true, quiet: true });
     if (result.error) console.warn("dotenv error:", result.error.message);
     else loaded = true;
     break;
@@ -39,6 +39,11 @@ import { resetAllRoomUnlocks } from "./roomUnlock.js";
 const app = express();
 app.use(cors());
 app.use(express.json());
+// Express 5 leaves req.body undefined when no body was parsed; routes destructure it, so keep Express 4's {}.
+app.use((req, _res, next) => {
+  req.body ??= {};
+  next();
+});
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,

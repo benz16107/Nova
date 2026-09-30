@@ -14,8 +14,8 @@ Important: After every tool use (logging a request, complaint, or giving WiFi in
 /** Welcome message spoken as soon as the guest starts the agent. Leave empty for no automatic greeting. */
 export const WELCOME_MESSAGE = `Hi, (Guest's first name) I'm Nova, your room concierge. How can I help you today?`;
 
-/** Realtime model (e.g. gpt-4o-realtime-preview-2024-12-17). */
-export const MODEL = "gpt-4o-mini-realtime-preview-2024-12-17";
+/** Realtime model (e.g. gpt-realtime-mini, gpt-realtime-1.5). The gpt-4o-*-realtime-preview models were shut down on 2026-05-07. */
+export const MODEL = "gpt-realtime-mini";
 
 /** Voice: alloy, ash, ballad, coral, echo, sage, shimmer, verse, marin, cedar. */
 export const VOICE = "ash";
